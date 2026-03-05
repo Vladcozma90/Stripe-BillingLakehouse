@@ -1,1 +1,38 @@
+catalog: dev_commerce
 
+project: billinglakehouse
+
+paths:
+  landing_base_path: "abfss://source@databricksendtoendtest.dfs.core.windows.net"
+  raw_base_path: "abfss://raw@databricksendtoendtest.dfs.core.windows.net"
+  curated_base_path: "abfss://curated@databricksendtoendtest.dfs.core.windows.net"
+  ops_base_path: "abfss://ops@databricksendtoendtest.dfs.core.windows.net"
+  checkpoint_base_path: "abfss://checkpoint@databricksendtoendtest.dfs.core.windows.net"
+
+
+api_sources:
+  stripe:
+    base_url: "https://api.stripe.com/v1"
+    datasets:
+      stripe_customers:
+        endpoint: "customers"
+      stripe_subscriptions:
+        endpoint: "subscriptions"
+      stripe_invoices:
+        endpoint: "invoices"
+
+
+datasets:
+  dim_plan:
+    landing_format: parquet
+  dim_accounts:
+    landing_format: parquet
+  fact_usage_daily:
+    landing_format: parquet
+  
+  stripe_customers:
+    landing_format: json
+  stripe_subscriptions:
+    landing_format: json
+  stripe_invoices:
+    landing_format: json
