@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 
 def _require_env(name: str) -> str:
     v = os.getenv(name)
-    if not v:
+    if not v or v.strip():
         raise RuntimeError(f"Missing required env var: {name}")
-    return v
+    return v.strip()
 
 def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]:
     stripe = api_sources["stripe"]

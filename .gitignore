@@ -1,1 +1,6 @@
 test.py
+logs/
+.env
+config/
+.venv
+dags/

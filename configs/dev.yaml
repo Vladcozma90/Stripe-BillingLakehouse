@@ -25,11 +25,32 @@ api_sources:
 datasets:
   dim_plan:
     landing_format: parquet
+    data_quality:
+      rules:
+        plan_id:
+          max_null: 0.0
+        monthly_price_usd:
+          max_null: 0.0
+        seats_included:
+          max_null: 0.0
   dim_accounts:
     landing_format: parquet
+    data_quality:
+      rules:
+        account_id:
+          max_null: 0.0
+        stripe_customer_id:
+          max_null: 0.0
+        plan_id:
+          max_null: 0.0
   fact_usage_daily:
     landing_format: parquet
-  
+    data_quality:
+      rules:
+        account_id:
+          max_null: 0.0
+        active_users:
+          max_null: 0.0
   stripe_customers:
     landing_format: json
   stripe_subscriptions:

@@ -30,7 +30,6 @@ def _get_landing_format(env: EnvConfig, dataset: str) -> str:
 
 def _read_autoloader(
         spark: SparkSession,
-        env: EnvConfig,
         src_path: str,
         schema_path: str,
         format: str
@@ -44,7 +43,7 @@ def _read_autoloader(
                  )
     
     if format == "json":
-        df = df.option("cloudFiles.formatOptions.multiLine", "false")
+        df = df.option("multiLine", "false")
     
     stream_df = (df
                  .load(src_path)
@@ -63,11 +62,10 @@ def _sum_rows_in(query) -> int:
 
 
 
-
 def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
 
     if not dataset or not dataset.strip():
-        raise ValueError("dataset must be a non-empty string")
+        raise ValueError("Dataset must be a non-empty string")
     
     if dataset not in (env.datasets or {}):
         raise ValueError(f"Dataset '{dataset}' not found in YAML datasets registry.")
@@ -88,7 +86,7 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
 
     try:
 
-        stream_df = _read_autoloader(spark, env, cfg["src_path"], cfg["schema_path"], format)
+        stream_df = _read_autoloader(spark, cfg["src_path"], cfg["schema_path"], format)
 
         enriched_df = (stream_df
                        .withColumn("_ingest_ts", current_timestamp())

@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 def _require_env(name: str) -> str:
     v = os.getenv(name)
-    if not v or v.strip():
+    if not v or not v.strip():
         raise RuntimeError(f"Missing required env var: {name}")
     return v.strip()
 
-def main() -> None:
+def bronze_job_run() -> None:
     env = load_envs()
     setup_log(os.getenv("LOG_LEVEL", "INFO").upper())
 
@@ -34,5 +34,5 @@ if __name__ == '__main__':
         load_dotenv()
     except Exception:
         pass
-    main()
+    bronze_job_run()
 

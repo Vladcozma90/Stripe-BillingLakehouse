@@ -14,8 +14,8 @@ class EnvConfig:
     curated_base_path: str
     ops_base_path: str
     checkpoint_base_path: str
-    datasets: list[str]
     api_sources: dict[str, Any]
+    datasets: dict[str, Any]
 
 
 def _require_str(value: Any, name: str) -> str:
@@ -63,7 +63,9 @@ def _validate_api_sources(api_sources: dict[str, Any]) -> None:
 def load_envs() -> EnvConfig:
     env = os.getenv("ENV", "dev").strip().lower()
 
-    cfg_path = Path(__file__).resolve().parents[2] / "configs" / f"{env}.yaml"
+    cfg_base = Path(os.getenv("APP_CONFIG_DIR", "/opt/airflow/app/configs"))
+    cfg_path = cfg_base + "/" + f"{env}.yaml"
+
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config file not found: {cfg_path}")
 
@@ -74,6 +76,7 @@ def load_envs() -> EnvConfig:
     api_sources = _require_dict(cfg.get("api_sources", {}), "api_sources")
     _validate_api_sources(api_sources)
 
+
     return EnvConfig(
         catalog=_require_str(cfg.get("catalog"), "catalog"),
         project=_require_str(cfg.get("project"), "project"),
@@ -83,5 +86,5 @@ def load_envs() -> EnvConfig:
         ops_base_path=_require_str(paths.get("ops_base_path"), "ops_base_path"),
         checkpoint_base_path=_require_str(paths.get("checkpoint_base_path"), "paths.checkpoint_base_path"),
         api_sources=api_sources,
-        datasets=_require_list_str(cfg.get("datasets"), "datasets"),        
+        datasets=_require_dict(cfg.get("datasets"), "datasets")
     )
