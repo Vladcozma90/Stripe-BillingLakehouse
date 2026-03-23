@@ -5,7 +5,7 @@ from typing import Any
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import current_timestamp, current_date, input_file_name, lit
 
-from src.utils.envs import EnvConfig
+from src.services.envs import EnvConfig
 
 logger = logging.getLogger(__name__)
 

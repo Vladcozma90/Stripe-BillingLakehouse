@@ -4,8 +4,8 @@ import os
 import logging
 from datetime import date
 from typing import Any
-from src.utils.envs import load_envs
-from src.utils.logger import setup_log
+from src.services.envs import load_envs
+from src.services.logger import setup_log
 from src.connectors.rest import extract_stripe_list_to_landing, StripeCursorSpec
 
 logger = logging.getLogger(__name__)

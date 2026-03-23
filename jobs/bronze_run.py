@@ -4,8 +4,8 @@ import os
 import logging
 from pyspark.sql import SparkSession
 
-from src.utils.envs import load_envs
-from src.utils.logger import setup_log
+from src.services.envs import load_envs
+from src.services.logger import setup_log
 from pipelines.bronze import ingest_bronze
 
 logger = logging.getLogger(__name__)

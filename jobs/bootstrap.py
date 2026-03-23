@@ -1,7 +1,7 @@
 from typing import Any, Iterable
 from pyspark.sql import SparkSession
-from src.utils.envs import load_envs, EnvConfig
-from src.utils.logger import setup_log
+from src.services.envs import load_envs, EnvConfig
+from src.services.logger import setup_log
 import logging
 import os
 
