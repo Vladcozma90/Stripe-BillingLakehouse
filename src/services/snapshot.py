@@ -1,10 +1,11 @@
 from delta.tables import DeltaTable
+from pyspark.sql import SparkSession, DataFrame
 
 def merge_current_snapshot(
-        spark,
+        spark: SparkSession,
         current_path: str,
         current_table: str,
-        df,
+        df: DataFrame,
         pk: str,
 ) -> None:
     if not DeltaTable.isDeltaTable(spark, current_path):

@@ -1,8 +1,8 @@
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, DataFrame
 from datetime import datetime
 from pyspark.sql.functions import col, lit, max
 
-def get_last_watermark(
+def _get_last_watermark(
         spark: SparkSession,
         state_table: str,
         pipeline_name: str,
@@ -51,18 +51,18 @@ def upsert_watermark(
     
     
 def read_incremental_by_watermark(
-        spark,
-        source_df,
+        spark: SparkSession,
+        source_df: DataFrame,
         state_table: str,
         pipeline_name: str,
         dataset: str,
         watermark_col: str = "_ingest_ts",
 ):
-    last_wm = get_last_watermark(spark, state_table, pipeline_name, dataset)
+    last_wm = _get_last_watermark(spark, state_table, pipeline_name, dataset)
     incr_df = source_df.filter(col(watermark_col) > lit(last_wm))
 
     if incr_df.take(1) == []:
-        return incr_df,  last_wm, None
+        return incr_df, last_wm, None
     
     new_wm = incr_df.agg(max(col(watermark_col)).alias("mx")).collect()[0]["mx"]
 

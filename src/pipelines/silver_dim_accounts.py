@@ -2,29 +2,22 @@ import uuid
 import logging
 from datetime import datetime
 
-from delta.tables import DeltaTable
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import (
-    current_timestamp,
-    current_date,
-    col,
-    lit,
-    row_number,
-    concat_ws,
-    sha2,
-    coalesce,
-)
+from pyspark.sql.functions import (lit, col, current_timestamp, current_date, row_number, concat_ws, sha2, coalesce)
 from pyspark.sql.window import Window
+from delta.tables import DeltaTable
+
 from services.envs import EnvConfig
 
 from services.audit import (
     insert_run_log_start,
     update_run_log_no_new_data,
     update_run_log_success,
-    update_run_log_failure
+    update_run_log_failure,
 )
 
 from services.watermark import read_incremental_by_watermark, upsert_watermark
+
 from services.delta_table import write_overwrite_table, write_append_table
 from services.snapshot import merge_current_snapshot
 from services.dq import evaluate_null_rules, build_dq_results_df, build_dq_failure_message
@@ -36,28 +29,32 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
         "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
-        "stage_table": f"{env.catalog}.{env.project}_silver.stage_plan",
-        "current_table": f"{env.catalog}.{env.project}_silver.current_plan",
-        "quarantine_table": f"{env.catalog}.{env.project}_silver.quarantine_plan",
-        "conform_table": f"{env.catalog}.{env.project}_silver.conform_plan",
-        "dq_table": f"{env.catalog}.{env.project}_silver.dq_plan",
+        "stage_table": f"{env.catalog}.{env.project}_silver.stage_accounts",
+        "current_table": f"{env.catalog}.{env.project}_silver.current_accounts",
+        "quarantine_table": f"{env.catalog}.{env.project}_silver.quarantine_accounts",
+        "conform_table": f"{env.catalog}.{env.project}_silver.conform_accounts",
+        "dq_table": f"{env.catalog}.{env.project}_silver.dq_accounts",
 
         "bronze_path": f"{env.raw_base_path}/{env.project}/dim_plan",
-        "stage_path": f"{env.curated_base_path}/{env.project}/dim_plan/stage_dim_plan",
-        "current_path": f"{env.curated_base_path}/{env.project}/dim_plan/current_dim_plan",
-        "quarantine_path": f"{env.curated_base_path}/{env.project}/dim_plan/quarantine_dim_plan",
-        "conform_path": f"{env.curated_base_path}/{env.project}/dim_plan/conform_dim_plan",
-        "dq_path": f"{env.curated_base_path}/{env.project}/dim_plan/data_quality",
+        "stage_path": f"{env.curated_base_path}/{env.project}/dim_plan/stage_dim_accounts",
+        "current_path": f"{env.curated_base_path}/{env.project}/dim_plan/current_dim_accounts",
+        "quarantine_path": f"{env.curated_base_path}/{env.project}/dim_plan/quarantine_dim_accounts",
+        "conform_path": f"{env.curated_base_path}/{env.project}/dim_plan/conform_dim_accounts",
+        "dq_path": f"{env.curated_base_path}/{env.project}/dim_accounts/data_quality",
     }
 
 
-def _get_required_columns() -> list[str]:
+def _required_columns() -> list[str]:
     return [
+        "account_id",
+        "stripe_customer_id",
         "plan_id",
-        "plan_name",
-        "monthly_price_usd",
-        "seats_included",
-        "max_units_per_month",
+        "segment",
+        "country",
+        "region",
+        "account_created_at",
+        "status",
+        "churned_at",
         "_ingest_ts",
         "_ingest_date",
         "_file_name",
@@ -65,14 +62,18 @@ def _get_required_columns() -> list[str]:
         "_landing_format",
     ]
 
-def _build_stage_dim_plan(incr_df: DataFrame, run_id: str, pk: str):
+def _build_stage_df(incr_df: DataFrame, run_id: str, pk: str) -> DataFrame:
     return (
         incr_df
         .withColumn(pk, col(pk).cast("string"))
-        .withColumn("plan_name", col("plan_name").cast("string"))
-        .withColumn("monthly_price_usd", col("monthly_price_usd").cast("bigint"))
-        .withColumn("seats_included", col("seats_included").cast("bigint"))
-        .withColumn("max_units_per_month", col("max_units_per_month").cast("bigint"))
+        .withColumn("stripe_customer_id", col("strip_customer_id").cast("string"))
+        .withColumn("plan_id", col("plan_id").cast("string"))
+        .withColumn("segment", col("segment").cast("string"))
+        .withColumn("country", col("country").cast("string"))
+        .withColumn("region", col("region").cast("string"))
+        .withColumn("account_created_at", col("account_created_at").cast("timestamp"))
+        .withColumn("status", col("status").cast("string"))
+        .withColumn("churned_at", col("churned_at").cast("date"))
         .withColumn("etl_run_id", lit(run_id))
         .withColumn("silver_processed_ts", current_timestamp())
         .withColumn("silver_processed_date", current_date())
@@ -95,9 +96,9 @@ def _split_quarantine(stage_df: DataFrame, pk: str):
 def _deduplicate_by_pk(df: DataFrame, pk: str) -> DataFrame:
     window_spec = Window.partitionBy(pk).orderBy(
         col("_ingest_ts").desc_nulls_last(),
-        col("silver_processed_ts").desc_nulls_last(),
-    )
-
+        col(col("_silver_processed_ts").desc_nulls_last())
+        )
+    
     return (
         df.withColumn("_rn", row_number().over(window_spec))
         .filter(col("_rn") == 1)
@@ -107,37 +108,81 @@ def _deduplicate_by_pk(df: DataFrame, pk: str) -> DataFrame:
 
 def _create_conform_table_if_not_exists(spark: SparkSession, conform_table: str, conform_path: str) -> None:
     spark.sql(f"""
-        CREATE TABLE IF NOT EXISTS {conform_table} (
-            plan_id_sk BIGINT GENERATED BY DEFAULT AS IDENTITY,
-            plan_id STRING,
-            plan_name STRING,
-            monthly_price_usd BIGINT,
-            seats_included BIGINT,
-            max_units_per_month BIGINT,
-            _file_name STRING,
-            _source STRING,
-            _landing_format STRING,
-            silver_effective_start_ts TIMESTAMP,
-            silver_effective_end_ts TIMESTAMP,
-            updated_at TIMESTAMP,
-            etl_run_id STRING,
-            record_hash STRING,
-            is_current BOOLEAN
+                CREATE TABLE IF NOT EXISTS {conform_table} (
+                account_id_sk BIGINT GENERATED BY DEFAULT AS IDENTITY,
+                account_id STRING,
+                stripe_customer_id STRING,
+                plan_id STRING,
+                segment STRING,
+                country STRING,
+                region STRING,
+                account_created_at TIMESTAMP,
+                status STRING,
+                churned_at STRING,
+                _file_name STRING,
+                _source STRING,
+                _landing_format STRING,
+                silver_effective_start_ts TIMESTAMP,
+                silver_effective_end_ts TIMESTAMP,
+                updated_at TIMESTAMP,
+                etl_run_id STRING,
+                record_hash STRING,
+                is_current BOOLEAN
+                )
+                USING DELTA
+                LOCATION '{conform_path}'
+            """)
+    
+def _build_incoming_df(dedup_df: DataFrame) -> DataFrame:
+    scd2_cols = [
+        "stripe_customer_id",
+        "plan_id",
+        "segment",
+        "country",
+        "region",
+        "account_created_at",
+        "status",
+        "churned_at",
+        "_file_name",
+        "_source",
+        "_landing_format",
+    ]
+
+    return (
+        dedup_df
+        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("string"))
+        .withColumn("record_hash", sha2(concat_ws("||", *[coalesce(col(c).cast("string"), lit("")) for c in scd2_cols]), 256))
+        .select(
+            "account_id",
+            "stripe_customer_id",
+            "plan_id",
+            "segment",
+            "country",
+            "region",
+            "account_created_at",
+            "status",
+            "churned_at",
+            "_file_name",
+            "_source",
+            "_landing_format",
+            "etl_run_id",
+            "silver_effective_start_ts",
+            "record_hash",
         )
-        USING DELTA
-        LOCATION '{conform_path}'
-    """)
+    )
 
 
-def _build_unknown_df(spark: SparkSession, run_id: str):
+def _build_unknown_df(spark: SparkSession, run_id: str) -> DataFrame:
     return spark.range(1).select(
-        lit(-1).cast("bigint").alias("plan_id_sk"),
+        lit(-1).cast("bigint").alias("account_id_sk"),
+        lit("UNKNOWN").cast("string").alias("account_id"),
         lit("UNKNOWN").cast("string").alias("plan_id"),
-        lit(None).cast("string").alias("plan_name"),
-        lit(None).cast("bigint").alias("monthly_price_usd"),
-        lit(None).cast("bigint").alias("seats_included"),
-        lit(None).cast("bigint").alias("max_units_per_month"),
-        lit(None).cast("string").alias("_file_name"),
+        lit(None).cast("string").alias("segment"),
+        lit(None).cast("string").alias("country"),
+        lit(None).cast("string").alias("region"),
+        lit(None).cast("timestamp").alias("account_created_at"),
+        lit(None).cast("string").alias("status"),
+        lit(None).cast("string").alias("churned_at"),
         lit("system").cast("string").alias("_source"),
         lit("UNKNOWN").cast("string").alias("_landing_format"),
         lit(datetime(1900, 1, 1)).cast("timestamp").alias("silver_effective_start_ts"),
@@ -148,36 +193,6 @@ def _build_unknown_df(spark: SparkSession, run_id: str):
         lit(True).alias("is_current"),
     )
 
-def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
-    scd2_cols = [
-        "plan_name",
-        "monthly_price_usd",
-        "seats_included",
-        "max_units_per_month",
-        "_file_name",
-        "_source",
-        "_landing_format",
-    ]
-
-    return (
-        dedup_df
-        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("timestamp"))
-        .withColumn("record_hash", sha2(concat_ws("||", *[coalesce(col(c).cast("string"), lit("")) for c in scd2_cols]), 256))
-        .select(
-            "plan_id",
-            "plan_name",
-            "monthly_price_usd",
-            "seats_included",
-            "max_units_per_month",
-            "_file_name",
-            "_source",
-            "_landing_format",
-            "etl_run_id",
-            "silver_effective_start_ts",
-            "record_hash",
-            )
-        )
-
 def _merge_conform_scd2(
         spark: SparkSession,
         conform_table: str,
@@ -185,37 +200,36 @@ def _merge_conform_scd2(
         run_id: str,
         pk: str
 ) -> None:
-
+    
     conform_dt = DeltaTable.forName(spark, conform_table)
 
-    unknown_df = _build_unknown_df(spark, run_id)
-    (
-        conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.plan_id_sk = s.plan_id_sk")
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
+    unknown_df = _build_unknown_df(spark=spark, run_id=run_id)
 
-    conform_active = (
-        conform_dt.toDF()
-        .filter(col("is_current") == True)
-        .select(pk, "record_hash")
-    )
-
+    (conform_dt.alias("t")
+     .merge(unknown_df.alias("s"), "t.account_id_sk = s.account_id_sk")
+     .whenNotMatchedInsertAll()
+     .execute()
+     )
+    
+    conform_active = (conform_dt.toDF()
+                      .filter(col("is_current") == True)
+                      .select(pk, col("record_hash"))
+                      )
+    
     joined_df = incoming_df.alias("inc").join(conform_active.alias("con"), on=pk, how="left")
 
     changed_df = (joined_df.filter(col("con.record_hash").isNotNull() & col("con.record_hash") != col("inc.record_hash"))
-                  .select("inc.*")
-                  )
-    
+               .select("inc.*")
+               )
+
     new_df = (joined_df.filter(col("con.record_hash").isNull())
-              .select("inc.*")
-              )
+                .select("inc.*")
+                )
     
 
-    update_changed_df = changed_df.withColumn("merge_key", pk).withColumn("scd_action", lit("UPDATE"))
-    insert_changed_df = changed_df.withColumn("merge_key", lit(None).cast("string")).withColumn("scd_action", lit("INSERT"))
-    insert_new_df = new_df.withColumn("merge_key", lit(None).cast("string")).withColumn("scd_action", lit("INSERT"))
+    update_changed_df = changed_df.withColumn("merge_key", pk).withColumn("scd_action", "UPDATE")
+    insert_changed_df = changed_df.withColumn("merge_key", lit(None).cast("string")).withColumn("scd_action", "INSERT")
+    insert_new_df = new_df.withColumn("merge_key", lit(None).cast("string")).withColumn("scd_action", "INSERT")
 
     staged_df = (update_changed_df
                  .unionByName(insert_changed_df)
@@ -225,58 +239,54 @@ def _merge_conform_scd2(
                  .withColumn("updated_at", current_timestamp())
                  )
     
-    (
-        conform_dt.alias("t")
-        .merge(staged_df.alias("s"), f"t.{pk} = s.merge_key AND t.is_current = true")
-        .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
-            set={
-                "silver_effective_end_ts" : "s.silver_effective_start_ts",
-                "updated_at" : "current_timestamp()",
-                "is_current" : "false",
-                "etl_run_id" : "s.etl_run_id"
-            },
-        )
-        .whenNotMatchedInsert(
-            condition="s.scd_action = 'INSERT'",
-            values={
-                "plan_id": "s.plan_id",
-                "plan_name": "s.plan_name",
-                "monthly_price_usd": "s.monthly_price_usd",
-                "seats_included": "s.seats_included",
-                "max_units_per_month": "s.max_units_per_month",
-                "_file_name": "s._file_name",
-                "_source": "s._source",
-                "_landing_format": "s._landing_format",
-                "silver_effective_start_ts": "s.silver_effective_start_ts",
-                "silver_effective_end_ts": "s.silver_effective_end_ts",
-                "updated_at": "s.updated_at",
-                "etl_run_id": "s.etl_run_id",
-                "record_hash": "s.record_hash",
-                "is_current": "s.is_current",
-            },
-        )
-        .execute()
-    )
+    (conform_dt.alias("t")
+     .merge(staged_df.alias("s"), f"t.{pk} = s.merge_key AND t.is_current = true")
+     .whenMatchedUpdate(
+         condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
+         set={
+             "silver_effective_start_ts": "s.silver_effective_end_ts",
+             "update_at" : "current_timestamp()",
+             "etl_run_id" : "s.etl_run_id",
+             "is_current": "false"
+         },
+     )
+     .whenNotMatchedInsert(
+         condition="s.scd_action = 'INSERT'",
+         values={
+            "account_id": "s.account_id",
+            "stripe_customer_id": "s.stripe_customer_id",
+            "plan_id":  "s.plan_id",
+            "segment": "s.segment",
+            "country": "c.country",
+            "region": "s.region",
+            "account_created_at": "s.account_created_at",
+            "status": "s.status",
+            "churned_at": "s.churned_at",
+            "_file_name": "s._file_name",
+            "_source": "s._source",
+            "_landing_format": "s._landing_format",
+            "etl_run_id": "s.etl_run_id",
+            "silver_effective_start_ts": "s.silver_effective_start_ts",
+            "silver_effective_end_ts": "s.silver_effective_end_ts",
+            "record_hash": "s.record_hash",
+            "is_current" : "s.is_current"
+         }
+     )
+     .execute()
+     )
+    
 
-def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "batch") -> None:
+def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str = "batch"):
     dq_scope = (dq_scope or "batch").strip().lower()
     if dq_scope not in ("batch", "current"):
         raise ValueError(f"dq_scope must be 'batch' or 'current'. Got: {dq_scope}")
     
-    pipeline_name = "silver_dim_plan"
-    dataset = "dim_plan"
+    pipeline_name = "silver_dim_accounts"
+    dataset = "dim_accounts"
     run_id = uuid.uuid4().hex
-    pk = "plan_id"
-    
-    cfg = _build_config(env)
+    pk = "account_id"
 
-    rows_in = 0
-    rows_qurantined = 0
-    rows_out = 0
-    last_wm = None
-    new_wm = None
-    dq_result = "OK"
+    cfg = _build_config(env=env)
 
     insert_run_log_start(
         spark=spark,
@@ -284,29 +294,29 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
         pipeline_name=pipeline_name,
         dataset=dataset,
         target_table=cfg["conform_table"],
-        run_id=run_id
+        run_id=run_id,
     )
 
     try:
 
-        logger.info("Silver dim_plan start | run_id=%s | dq_scope=%s", run_id, dq_scope)
+        logger.info("Silver dim_accounts start | run_id=%s | dq_scope=%s", run_id, dq_scope)
 
         bronze_df = spark.read.format("delta").load(cfg["bronze_path"])
 
-        required_columns = _get_required_columns()
+        required_columns = _required_columns()
 
         missing_columns = [c for c in required_columns if c not in bronze_df.columns]
 
         if missing_columns:
             raise ValueError(f"Bronze missing required cols: {missing_columns}")
-        
+
         incr_df, last_wm, new_wm = read_incremental_by_watermark(
             spark=spark,
             source_df=bronze_df,
             state_table=cfg["state_table"],
             pipeline_name=pipeline_name,
             dataset=dataset,
-            watermark_col="_ingest_ts",
+            watermark_col="_ingest_ts"
         )
 
         if incr_df.take(1) == []:
@@ -321,7 +331,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             logger.info("No new data. Exiting.")
             return
         
-        stage_df = _build_stage_dim_plan(
+        stage_df = _build_stage_df(
             incr_df=incr_df,
             run_id=run_id,
             pk=pk
@@ -332,14 +342,18 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             table_name=cfg["stage_table"],
             table_path=cfg["stage_path"]
         )
+
         stage_df = spark.read.table(cfg["stage_table"])
 
-        bad_records_df, good_records_df = _split_quarantine(stage_df=stage_df, pk=pk)
+        bad_records_df, good_records_df = _split_quarantine(
+            stage_df=stage_df,
+            pk=pk,
+        )
         write_append_table(
             spark=spark,
             df=bad_records_df,
             table_name=cfg["quarantine_table"],
-            table_path=cfg["quarantine_path"],
+            table_path=cfg["quarantine_path"]
         )
 
         dedup_df = _deduplicate_by_pk(
@@ -364,7 +378,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
 
         dq_source_df = stage_df if dq_scope == "batch" else current_df
         dq_source_table = cfg["stage_table"] if dq_scope == "batch" else cfg["current_table"]
-
+        
         dq_rules = env.datasets[dataset]["data_quality"]["rules"]
         dq_metrics = evaluate_null_rules(dq_source_df, dq_rules)
         dq_result = dq_metrics["overall_result"]
@@ -376,6 +390,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             dq_scope=dq_scope,
             metrics=dq_metrics,
         )
+
         write_append_table(
             spark=spark,
             df=dq_result_df,
@@ -390,16 +405,16 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
         _create_conform_table_if_not_exists(
             spark=spark,
             conform_table=cfg["conform_table"],
-            conform_path=cfg["conform_path"],
+            conform_path=cfg["conform_path"]
         )
 
-        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
+        incoming_df = _build_incoming_df(dedup_df=dedup_df)
         _merge_conform_scd2(
             spark=spark,
             conform_table=cfg["conform_table"],
             incoming_df=incoming_df,
             run_id=run_id,
-            pk=pk
+            pk=pk            
         )
 
         upsert_watermark(
@@ -429,7 +444,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             rows_in,
             rows_out,
             rows_qurantined,
-        )       
+        )
 
     except Exception as e:
         update_run_log_failure(
