@@ -457,7 +457,7 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_qurantined,
-            dq_result="ERROR",
+            dq_result=dq_result,
             last_watermark_ts=last_wm,
         )
         logger.exception("Silver dim_plan FAILED")
