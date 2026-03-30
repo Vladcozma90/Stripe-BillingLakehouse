@@ -6,7 +6,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> dict[str, Any]:
+def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> None:
 
     ops_schema = f"{env.catalog}.{env.project}_ops"
 
@@ -67,4 +67,3 @@ def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> dict[str, Any]:
         logger.info("Applied Delta optimize proprieties: %s", t)
 
     logger.info("Bootstrap complete.")
-    return ops
