@@ -1,6 +1,6 @@
 from __future__ import annotations
-
 import os
+import argparse
 import logging
 from datetime import date
 from typing import Any
@@ -10,11 +10,11 @@ from src.connectors.rest import extract_stripe_list_to_landing, StripeCursorSpec
 
 logger = logging.getLogger(__name__)
 
-def _require_env(name: str) -> str:
-    v = os.getenv(name)
-    if not v or v.strip():
-        raise RuntimeError(f"Missing required env var: {name}")
-    return v.strip()
+def _get_job_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", required=True)
+    return parser.parse_args()
+
 
 def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]:
     stripe = api_sources["stripe"]
@@ -30,9 +30,10 @@ def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]
 def main() -> None:
     env = load_envs()
     setup_log(os.getenv("LOG_LEVEL", "INFO").upper())
+    args = _get_job_args()
 
-    dataset = _require_env("DATASET")
-    token = _require_env("STRIPE_SECRET_KEY")
+    dataset = args.dataset
+    token = dbutils.secrets.get(scope="kv-prod", key="stripe-api-token")
 
     cfg = _get_stripe_cfg(env.api_sources, dataset)
     base_url = cfg["base_url"]

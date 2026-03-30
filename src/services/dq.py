@@ -69,7 +69,6 @@ def build_dq_results_df(
         spark: SparkSession,
         table_name: str,
         run_id: str,
-        dq_scope: str,
         metrics: dict[str, Any],
 ) -> DataFrame:
     
@@ -78,7 +77,6 @@ def build_dq_results_df(
             table_name,
             run_id,
             datetime.utcnow(),
-            dq_scope,
             int(metrics["total_rows"]),
             rule_result["column_name"],
             rule_result["rule_name"],
@@ -95,7 +93,6 @@ def build_dq_results_df(
         table_name STRING,
         run_id STRING,
         dq_ts TIMESTAMP,
-        dq_scope STRING,
         total_rows BIGINT,
         column_name STRING,
         rule_name STRING,

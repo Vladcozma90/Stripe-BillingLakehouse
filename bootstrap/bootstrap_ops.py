@@ -1,29 +1,12 @@
-from typing import Any, Iterable
-from pyspark.sql import SparkSession
-from src.services.envs import load_envs, EnvConfig
-from src.services.logger import setup_log
 import logging
-import os
+from pyspark.sql import SparkSession
+from src.services.envs import EnvConfig
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-def _ensure_schemas(spark: SparkSession, env: EnvConfig, schemas: Iterable[str]) -> None:
 
-    spark.sql(f"USE CATALOG {env.catalog}")
-    
-    for s in schemas:
-        spark.sql(f"CREATE SCHEMA IF NOT EXISTS {env.catalog}.{s}")
-        logger.info("Ensure schema exists: %s", f"{env.catalog}.{s}")
-
-def bootstrap(spark: SparkSession, env: EnvConfig) -> dict[str, Any]:
-
-    schemas = [
-        f"{env.project}_ops",
-        f"{env.project}_bronze",
-        f"{env.project}_silver",
-        f"{env.project}_gold",
-    ]
-    _ensure_schemas(spark, env, schemas)
+def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> dict[str, Any]:
 
     ops_schema = f"{env.catalog}.{env.project}_ops"
 
@@ -85,18 +68,3 @@ def bootstrap(spark: SparkSession, env: EnvConfig) -> dict[str, Any]:
 
     logger.info("Bootstrap complete.")
     return ops
-
-def main() -> None:
-    env = load_envs()
-    setup_log(os.getenv("LOG_LEVEL", "INFO").upper())
-    spark = SparkSession.builder.appName("booststrap").getOrCreate()
-
-    bootstrap(spark, env)
-
-    if __name__ == "__main__":
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-        except Exception:
-            pass
-        main()

@@ -61,7 +61,7 @@ def read_incremental_by_watermark(
     last_wm = _get_last_watermark(spark, state_table, pipeline_name, dataset)
     incr_df = source_df.filter(col(watermark_col) > lit(last_wm))
 
-    if incr_df.take(1) == []:
+    if incr_df.rdd.isEmpty():
         return incr_df, last_wm, None
     
     new_wm = incr_df.agg(max(col(watermark_col)).alias("mx")).collect()[0]["mx"]

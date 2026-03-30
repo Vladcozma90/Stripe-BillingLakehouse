@@ -272,7 +272,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
     cfg = _build_config(env)
 
     rows_in = 0
-    rows_qurantined = 0
+    rows_quarantined = 0
     rows_out = 0
     last_wm = None
     new_wm = None
@@ -349,7 +349,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
 
         rows_in = good_records_df.count()
         rows_out = dedup_df.count()
-        rows_qurantined = bad_records_df.count()
+        rows_quarantined = bad_records_df.count()
 
         merge_current_snapshot(
             spark=spark,
@@ -420,7 +420,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             dq_result=dq_result,
             rows_in=rows_in,
             rows_out=rows_out,
-            rows_quarantined=rows_qurantined,
+            rows_quarantined=rows_quarantined,
             last_watermark_ts=new_wm,
         )
 
@@ -428,7 +428,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             "Silver dim_plan SUCCESS | rows_in=%d | rows_out=%d | rows_quarantined=%d",
             rows_in,
             rows_out,
-            rows_qurantined,
+            rows_quarantined,
         )       
 
     except Exception as e:
@@ -441,7 +441,7 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig, dq_scope: str = "ba
             error_msg=str(e),
             rows_in=rows_in,
             rows_out=rows_out,
-            rows_quarantined=rows_qurantined,
+            rows_quarantined=rows_quarantined,
             dq_result="ERROR",
             last_watermark_ts=last_wm,
         )

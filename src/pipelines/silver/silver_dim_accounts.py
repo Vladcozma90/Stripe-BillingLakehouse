@@ -18,7 +18,7 @@ from services.audit import (
 
 from services.watermark import read_incremental_by_watermark, upsert_watermark
 
-from services.delta_table import write_overwrite_table, write_append_table
+from services.delta_table import write_append_table
 from services.snapshot import merge_current_snapshot
 from services.dq import evaluate_null_rules, build_dq_results_df, build_dq_failure_message
 
@@ -29,18 +29,16 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
         "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
-        "stage_table": f"{env.catalog}.{env.project}_silver.stage_accounts",
-        "current_table": f"{env.catalog}.{env.project}_silver.current_accounts",
         "quarantine_table": f"{env.catalog}.{env.project}_silver.quarantine_accounts",
-        "conform_table": f"{env.catalog}.{env.project}_silver.conform_accounts",
+        "current_table": f"{env.catalog}.{env.project}_silver.current_accounts",
         "dq_table": f"{env.catalog}.{env.project}_silver.dq_accounts",
+        "conform_table": f"{env.catalog}.{env.project}_silver.conform_accounts",
 
-        "bronze_path": f"{env.raw_base_path}/{env.project}/dim_plan",
-        "stage_path": f"{env.curated_base_path}/{env.project}/dim_plan/stage_dim_accounts",
-        "current_path": f"{env.curated_base_path}/{env.project}/dim_plan/current_dim_accounts",
-        "quarantine_path": f"{env.curated_base_path}/{env.project}/dim_plan/quarantine_dim_accounts",
-        "conform_path": f"{env.curated_base_path}/{env.project}/dim_plan/conform_dim_accounts",
+        "bronze_path": f"{env.raw_base_path}/{env.project}/dim_accounts",
+        "quarantine_path": f"{env.curated_base_path}/{env.project}/dim_accounts/quarantine_dim_accounts",
+        "current_path": f"{env.curated_base_path}/{env.project}/dim_accounts/current_dim_accounts",
         "dq_path": f"{env.curated_base_path}/{env.project}/dim_accounts/data_quality",
+        "conform_path": f"{env.curated_base_path}/{env.project}/dim_accounts/conform_dim_accounts",
     }
 
 
@@ -66,7 +64,7 @@ def _build_stage_df(incr_df: DataFrame, run_id: str, pk: str) -> DataFrame:
     return (
         incr_df
         .withColumn(pk, col(pk).cast("string"))
-        .withColumn("stripe_customer_id", col("strip_customer_id").cast("string"))
+        .withColumn("stripe_customer_id", col("stripe_customer_id").cast("string"))
         .withColumn("plan_id", col("plan_id").cast("string"))
         .withColumn("segment", col("segment").cast("string"))
         .withColumn("country", col("country").cast("string"))
@@ -96,7 +94,7 @@ def _split_quarantine(stage_df: DataFrame, pk: str):
 def _deduplicate_by_pk(df: DataFrame, pk: str) -> DataFrame:
     window_spec = Window.partitionBy(pk).orderBy(
         col("_ingest_ts").desc_nulls_last(),
-        col(col("_silver_processed_ts").desc_nulls_last())
+        col(col("silver_processed_ts").desc_nulls_last())
         )
     
     return (
@@ -118,7 +116,7 @@ def _create_conform_table_if_not_exists(spark: SparkSession, conform_table: str,
                 region STRING,
                 account_created_at TIMESTAMP,
                 status STRING,
-                churned_at STRING,
+                churned_at date,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING,
@@ -150,7 +148,7 @@ def _build_incoming_df(dedup_df: DataFrame) -> DataFrame:
 
     return (
         dedup_df
-        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("string"))
+        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("timestamp"))
         .withColumn("record_hash", sha2(concat_ws("||", *[coalesce(col(c).cast("string"), lit("")) for c in scd2_cols]), 256))
         .select(
             "account_id",
@@ -176,6 +174,7 @@ def _build_unknown_df(spark: SparkSession, run_id: str) -> DataFrame:
     return spark.range(1).select(
         lit(-1).cast("bigint").alias("account_id_sk"),
         lit("UNKNOWN").cast("string").alias("account_id"),
+        lit("UNKNOWN").cast("string").alias("stripe_customer_id"),
         lit("UNKNOWN").cast("string").alias("plan_id"),
         lit(None).cast("string").alias("segment"),
         lit(None).cast("string").alias("country"),
@@ -183,6 +182,7 @@ def _build_unknown_df(spark: SparkSession, run_id: str) -> DataFrame:
         lit(None).cast("timestamp").alias("account_created_at"),
         lit(None).cast("string").alias("status"),
         lit(None).cast("string").alias("churned_at"),
+        lit(None).cast("string").alias("_file_name"),
         lit("system").cast("string").alias("_source"),
         lit("UNKNOWN").cast("string").alias("_landing_format"),
         lit(datetime(1900, 1, 1)).cast("timestamp").alias("silver_effective_start_ts"),
@@ -244,8 +244,8 @@ def _merge_conform_scd2(
      .whenMatchedUpdate(
          condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
          set={
-             "silver_effective_start_ts": "s.silver_effective_end_ts",
-             "update_at" : "current_timestamp()",
+             "silver_effective_end_ts": "s.silver_effective_start_ts",
+             "updated_at" : "current_timestamp()",
              "etl_run_id" : "s.etl_run_id",
              "is_current": "false"
          },
@@ -257,7 +257,7 @@ def _merge_conform_scd2(
             "stripe_customer_id": "s.stripe_customer_id",
             "plan_id":  "s.plan_id",
             "segment": "s.segment",
-            "country": "c.country",
+            "country": "s.country",
             "region": "s.region",
             "account_created_at": "s.account_created_at",
             "status": "s.status",
@@ -266,6 +266,7 @@ def _merge_conform_scd2(
             "_source": "s._source",
             "_landing_format": "s._landing_format",
             "etl_run_id": "s.etl_run_id",
+            "updated_at": "s.updated_at",
             "silver_effective_start_ts": "s.silver_effective_start_ts",
             "silver_effective_end_ts": "s.silver_effective_end_ts",
             "record_hash": "s.record_hash",
@@ -276,10 +277,7 @@ def _merge_conform_scd2(
      )
     
 
-def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str = "batch"):
-    dq_scope = (dq_scope or "batch").strip().lower()
-    if dq_scope not in ("batch", "current"):
-        raise ValueError(f"dq_scope must be 'batch' or 'current'. Got: {dq_scope}")
+def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig):
     
     pipeline_name = "silver_dim_accounts"
     dataset = "dim_accounts"
@@ -287,6 +285,13 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
     pk = "account_id"
 
     cfg = _build_config(env=env)
+
+    rows_in = 0
+    rows_quarantined = 0
+    rows_out = 0
+    last_wm = None
+    new_wm = None
+    dq_result = "OK"
 
     insert_run_log_start(
         spark=spark,
@@ -299,7 +304,7 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
 
     try:
 
-        logger.info("Silver dim_accounts start | run_id=%s | dq_scope=%s", run_id, dq_scope)
+        logger.info("Silver dim_accounts start | run_id=%s ", run_id)
 
         bronze_df = spark.read.format("delta").load(cfg["bronze_path"])
 
@@ -319,7 +324,7 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
             watermark_col="_ingest_ts"
         )
 
-        if incr_df.take(1) == []:
+        if incr_df.rdd.isEmpty():
             update_run_log_no_new_data(
                 spark=spark,
                 run_logs_table=cfg["run_logs_table"],
@@ -336,14 +341,6 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
             run_id=run_id,
             pk=pk
         )
-        write_overwrite_table(
-            spark=spark,
-            df=stage_df,
-            table_name=cfg["stage_table"],
-            table_path=cfg["stage_path"]
-        )
-
-        stage_df = spark.read.table(cfg["stage_table"])
 
         bad_records_df, good_records_df = _split_quarantine(
             stage_df=stage_df,
@@ -363,21 +360,11 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
 
         rows_in = good_records_df.count()
         rows_out = dedup_df.count()
-        rows_qurantined = bad_records_df.count()
-
-        merge_current_snapshot(
-            spark=spark,
-            current_path=cfg["current_path"],
-            current_table=cfg["current_table"],
-            df=dedup_df,
-            pk=pk
-        )
-        current_df = spark.read.table(cfg["current_table"])
+        rows_quarantined = bad_records_df.count()
 
 
-
-        dq_source_df = stage_df if dq_scope == "batch" else current_df
-        dq_source_table = cfg["stage_table"] if dq_scope == "batch" else cfg["current_table"]
+        dq_source_df = stage_df
+        dq_source_table = cfg["stage_table"]
         
         dq_rules = env.datasets[dataset]["data_quality"]["rules"]
         dq_metrics = evaluate_null_rules(dq_source_df, dq_rules)
@@ -387,7 +374,6 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
             spark=spark,
             table_name=dq_source_table,
             run_id=run_id,
-            dq_scope=dq_scope,
             metrics=dq_metrics,
         )
 
@@ -400,7 +386,15 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
 
         if dq_result == "FAIL":
             raise ValueError(build_dq_failure_message(dq_metrics))
-        
+
+        merge_current_snapshot(
+            spark=spark,
+            current_path=cfg["current_path"],
+            current_table=cfg["current_table"],
+            df=dedup_df,
+            pk=pk
+        )
+
 
         _create_conform_table_if_not_exists(
             spark=spark,
@@ -435,15 +429,15 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
             dq_result=dq_result,
             rows_in=rows_in,
             rows_out=rows_out,
-            rows_quarantined=rows_qurantined,
+            rows_quarantined=rows_quarantined,
             last_watermark_ts=new_wm,
         )
 
         logger.info(
-            "Silver dim_plan SUCCESS | rows_in=%d | rows_out=%d | rows_quarantined=%d",
+            "Silver dim_accounts SUCCESS | rows_in=%d | rows_out=%d | rows_quarantined=%d",
             rows_in,
             rows_out,
-            rows_qurantined,
+            rows_quarantined,
         )
 
     except Exception as e:
@@ -456,9 +450,9 @@ def run_silver_dim_accounts(spark: SparkSession, env: EnvConfig, dq_scope: str =
             error_msg=str(e),
             rows_in=rows_in,
             rows_out=rows_out,
-            rows_quarantined=rows_qurantined,
+            rows_quarantined=rows_quarantined,
             dq_result=dq_result,
             last_watermark_ts=last_wm,
         )
-        logger.exception("Silver dim_plan FAILED")
+        logger.exception("Silver dim_accounts FAILED")
         raise

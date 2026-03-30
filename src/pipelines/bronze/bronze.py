@@ -37,8 +37,8 @@ def _read_autoloader(
     
     df = (spark.readStream
                  .format("cloudFiles")
-                 .option("cloudfiles.format", format)
-                 .option("cloudfiles.schemaLocation", schema_path)
+                 .option("cloudFiles.format", format)
+                 .option("cloudFiles.schemaLocation", schema_path)
                  .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
                  )
     
@@ -121,7 +121,7 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
                     SET finished_at = current_timestamp(),
                         status = 'SUCCESS',
                         rows_in = {rows_in},
-                        rows_out = {rows_in},
+                        rows_out = {rows_in}
                     WHERE pipeline_name = '{pipeline_name}' AND dataset = '{dataset}' AND run_id = '{run_id}'
                 """)
         
@@ -135,7 +135,7 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
                     UPDATE {cfg["run_logs_table"]}
                     SET finished_at = current_timestamp(),
                         status = 'FAILED',
-                        error_msg = '{msg}'
+                        error_msg = '{msg}',
                         rows_in = {rows_in},
                         rows_out = 0
                     WHERE pipeline_name = '{pipeline_name}' AND dataset = '{dataset}' AND run_id = '{run_id}'
