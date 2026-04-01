@@ -23,37 +23,207 @@ api_sources:
 
 
 datasets:
-  dim_plan:
+  erp_plan_catalog:
     landing_format: parquet
     data_quality:
       rules:
-        plan_id:
+        plan_code:
           max_null: 0.0
+          severity: error
+        
+        plan_name:
+          max_null: 0.0
+          severity: error
+        
         monthly_price_usd:
           max_null: 0.0
+          min_value: 0
+          severity: error
+
         seats_included:
           max_null: 0.0
-  dim_accounts:
+          min_value: 1
+          severity: error
+        
+        max_units_per_month:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        currency:
+          max_null: 0.0
+          accepted_values: ["USD", "EUR"]
+          severity: error
+        
+        billing_period:
+          max_null: 0.0
+          accepted_values: ["monthly", "yearly"]
+          severity: error
+
+        effective_from:
+          max_null: 0.0
+          valid_date: true
+          severity: error
+        
+        effective_to:
+          max_null: 0.2
+          allowed_null:
+            allow_null_when: true
+          severity: warn
+        
+        is_current:
+          max_null: 0.0
+          accepted_values: [true, false]
+          severity: error
+        
+        price_version:
+          max_null: 0.0
+          severity: error
+
+  erp_account_master_snapshot:
     landing_format: parquet
     data_quality:
       rules:
         account_id:
           max_null: 0.0
+          severity: error
+
+        customer_name:
+          max_null: 0.02
+          severity: warn
+
+        email:
+          max_null: 0.02
+          regex: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+          severity: warn
+        
         stripe_customer_id:
           max_null: 0.0
-        plan_id:
+          unique: true
+          severity: error
+        
+        plan_code:
           max_null: 0.0
-  fact_usage_daily:
+          fk_reference:
+            dataset: erp_plan_catalog
+            column: plan_code
+          severity: error
+
+        segment:
+          max_null: 0.02
+          accepted_values: ["Mid-Market", "SMB", "Enterprise"]
+          severity: warn
+
+        country_code:
+          max_null: 0.05
+          severity: warn
+
+        region:
+          max_null: 0.01
+          accepted_values: ["EMEA", "NA", "LATAM", "APAC"]
+          severity: warn
+        
+        account_created_at_raw:
+          max_null: 0.0
+          valid_date: true
+          severity: error
+
+        status:
+          max_null: 0.0
+          accepted_values: ["active", "trial", "suspended", "churned"]
+          severity: error
+
+        churned_at_raw:
+          max_null: 1.0
+          valid_date: true
+          severity: warn
+
+        source_system:
+          max_null: 0.0
+          accepted_values: ["ERP"]
+          severity: error
+
+        snapshot_dt:
+          max_null: 0.0
+          valid_date: true
+          severity: error
+  
+  erp_usage_daily:
     landing_format: parquet
     data_quality:
       rules:
+        usage_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        event_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        usage_date:
+          max_null: 0.0
+          valid_date: true
+          severity: error
+
         account_id:
           max_null: 0.0
+          fk_reference:
+            dataset: erp_account_master_snapshot
+            column: account_id
+            max_orphan_pct: 0.0
+          severity: error
+
+        feature_code:
+          max_null: 0.0
+          accepted_values: ["core_actions", "api_calls", "reports", "exports"]
+          severity: error
+
         active_users:
           max_null: 0.0
+          min_value: 0
+          severity: error
+
+        units_raw:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        source_system:
+          max_null: 0.0
+          accepted_values: ["ERP"]
+          severity: error
+
+        batch_id:
+          max_null: 0.0
+          severity: error
+  
   stripe_customers:
     landing_format: json
   stripe_subscriptions:
     landing_format: json
   stripe_invoices:
     landing_format: json
+        
+
+
+
+        
+
+
+        
+        
+
+
+
+
+
+
+  
+
+
+
+        
+  
+  

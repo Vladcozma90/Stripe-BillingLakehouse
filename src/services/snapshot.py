@@ -8,15 +8,10 @@ def merge_current_snapshot(
         df: DataFrame,
         pk: str,
 ) -> None:
-    if not DeltaTable.isDeltaTable(spark, current_path):
-        (
-            df.write
-            .format("delta")
-            .mode("overwrite")
-            .option("overwriteSchema", "true")
-            .save(current_path)
-        )
-    spark.sql(f"CREATE TABLE IF NOT EXISTS {current_table} USING DELTA LOCATION '{current_path}'")
+    
+    df.drop("_ingest_ts",
+            "_ingest_date",
+            )
 
     current_dt = DeltaTable.forName(spark, current_table)
 
