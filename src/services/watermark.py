@@ -22,6 +22,26 @@ def _get_last_watermark(
     return row[0]["last_watermark_ts"]
 
 
+def read_incremental_by_watermark(
+        spark: SparkSession,
+        source_df: DataFrame,
+        state_table: str,
+        pipeline_name: str,
+        dataset: str,
+        watermark_col: str = "_ingest_ts",
+):
+    last_wm = _get_last_watermark(spark, state_table, pipeline_name, dataset)
+    incr_df = source_df.filter(col(watermark_col) > lit(last_wm))
+
+    if incr_df.isEmpty():
+        return incr_df, last_wm, None
+    
+    new_wm = incr_df.agg(max(col(watermark_col)).alias("mx")).collect()[0]["mx"]
+
+    return incr_df, last_wm, new_wm
+
+
+
 def upsert_watermark(
         spark: SparkSession,
         state_table: str,
@@ -48,22 +68,3 @@ def upsert_watermark(
                 WHEN NOT MATCHED INSET (pipeline_name, dataset, last_watermark_ts, updated_by_run_id, updated_at)
                 VALUES (s.pipeline_name, s.dataset, s.last_watermark_ts, s.updated_by_run_id, current_timestamp())
             """)
-    
-    
-def read_incremental_by_watermark(
-        spark: SparkSession,
-        source_df: DataFrame,
-        state_table: str,
-        pipeline_name: str,
-        dataset: str,
-        watermark_col: str = "_ingest_ts",
-):
-    last_wm = _get_last_watermark(spark, state_table, pipeline_name, dataset)
-    incr_df = source_df.filter(col(watermark_col) > lit(last_wm))
-
-    if incr_df.rdd.isEmpty():
-        return incr_df, last_wm, None
-    
-    new_wm = incr_df.agg(max(col(watermark_col)).alias("mx")).collect()[0]["mx"]
-
-    return incr_df, last_wm, new_wm
