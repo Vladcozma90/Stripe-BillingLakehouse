@@ -362,9 +362,6 @@ def _merge_conform_scd2(
         .execute()
     )
 
-    
-
-
 
 
 
@@ -437,7 +434,6 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         # dq
-
         dq_source_df = stage_df
         dq_source = "stage_erp_account_master_snapshot"
 
@@ -500,45 +496,56 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
 
         # conform creation
 
-        
-        
+        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
+        _merge_conform_scd2(
+            spark=spark,
+            conform_table=cfg["conform_table"],
+            incoming_df=incoming_df,
+            run_id=run_id,
+            key_columns=business_key            
+        )
 
+        upsert_watermark(
+            spark=spark,
+            state_table=cfg["state_table"],
+            new_wm=new_wm,
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+        )
 
+        update_run_log_success(
+            spark=spark,
+            run_logs_table=cfg["run_logs_table"],
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+            dq_result=dq_result,
+            rows_in=rows_in,
+            rows_out=rows_out,
+            rows_quarantined=rows_quarantined,
+            last_watermark_ts=last_wm,
+        )
 
+        logger.info("Silver erp_account_master_snapshot | row_in=%d | rows_out=%d | rows_quarantined=%d",
+                    rows_in,
+                    rows_out,
+                    rows_quarantined
+        )
 
-
-
-
-
-
-
-
-
-
-        
-
-
-
-
-
-
-
-
-
-
-    
     except Exception as e:
-        pass
-
-
-
-
-
-     
-
-
-    
-
-    
-
-
+        update_run_log_failure(
+            spark=spark,
+            run_logs_table=cfg["run_logs_table"],
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+            error_msg=e,
+            rows_in=rows_in,
+            rows_out=rows_out,
+            rows_quarantined=rows_quarantined,
+            dq_result=dq_result,
+            last_watermark_ts=last_wm
+        )
+        logger.exception("Silver_erp_account_master_snapshot")
+        raise

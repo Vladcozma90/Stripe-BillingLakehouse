@@ -474,5 +474,5 @@ def run_silver_dim_plan(spark: SparkSession, env: EnvConfig) -> None:
             dq_result="ERROR",
             last_watermark_ts=last_wm,
         )
-        logger.exception("Silver dim_plan FAILED")
+        logger.exception("silver_erp_plan_catalog FAILED")
         raise

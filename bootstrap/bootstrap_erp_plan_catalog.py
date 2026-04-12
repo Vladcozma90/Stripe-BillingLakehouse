@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "bronze_table": f"{env.catalog}.{env.project}_bronze.b_erp_plan_catalog.",
+        "bronze_table": f"{env.catalog}.{env.project}_bronze.b_erp_plan_catalog",
         "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_plan_catalog",
         "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_plan_catalog",
         "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_erp_plan_catalog",
@@ -20,7 +20,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     }
 
 
-def bootstrap_dim_plan(spark: SparkSession, env: EnvConfig) -> None:
+def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
     
@@ -54,7 +54,7 @@ def bootstrap_dim_plan(spark: SparkSession, env: EnvConfig) -> None:
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
-                dq_source STRING,
+                dq_source_table STRING,
                 run_id STRING,
                 dq_ts TIMESTAMP,
                 total_rows BIGINT,
@@ -74,8 +74,8 @@ def bootstrap_dim_plan(spark: SparkSession, env: EnvConfig) -> None:
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_quarantine_table"]} (
-                quarantine_reason,
-                quarantine_ts
+                quarantine_reason STRING,
+                quarantine_ts TIMESTAMP,
                 plan_code STRING,
                 plan_name STRING,
                 monthly_price_usd INTEGER,
