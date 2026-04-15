@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 def _build_config(env: EnvConfig, dataset: str) -> dict[str, Any]:
     return {
         #PATHS
-        "src_path": f"{env.landing_base_path}/{env.project}/{dataset}",
-        "tgt_path": f"{env.raw_base_path}/{env.project}/{dataset}",
+        "src_path": f"{env.landing_base_path}/{env.project}/{dataset}", 
+        "tgt_path": f"{env.raw_base_path}/{env.project}/b_{dataset}",
         "checkpoint_path": f"{env.checkpoint_base_path}/{env.project}/bronze/{dataset}/checkpoint",
         "schema_path": f"{env.checkpoint_base_path}/{env.project}/bronze/{dataset}/schema",
         #TABLES
@@ -43,7 +43,11 @@ def _read_autoloader(
                  )
     
     if format == "json":
-        df = df.option("multiLine", "false")
+        df = (
+            df
+            .option("multiLine", "false")
+            .option("pathGlobFilter", "*jsonl")
+        )
     
     stream_df = (df
                  .load(src_path)

@@ -84,7 +84,6 @@ def extract_stripe_list_to_landing(
 
     url = base_url.rstrip("/") + "/" + endpoint.lstrip("/")
 
-    os.makedirs(landing_dir, exist_ok=True)
     run_id = uuid.uuid4().hex
     run_dir = os.path.join(landing_dir, f"run_id={run_id}")
     os.makedirs(run_dir, exist_ok=True)

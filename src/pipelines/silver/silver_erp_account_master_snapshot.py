@@ -52,7 +52,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "conform_path": f"{env.curated_base_path}/{env.catalog}/erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
     }
 
-def _get_required_cols() -> list[str]:
+def _get_required_columns() -> list[str]:
     return [
         "account_id",
         "customer_name",
@@ -397,7 +397,7 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         # Read bronze and validate data source
         bronze_df = spark.read.format("delta").load(cfg["bronze_path"])
 
-        required_columns = _get_required_cols
+        required_columns = _get_required_columns()
 
         missing_columns = [c for c in required_columns if c not in bronze_df.columns]
 
@@ -434,12 +434,11 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         # dq
-        dq_source_df = stage_df
         dq_source = "stage_erp_account_master_snapshot"
 
 
         dq_rules = env.datasets["erp_account_master_snapshot"]["data_quality"]["rules"]
-        dq_metrics = evaluate_dq_rules(df=dq_source_df, rules=dq_rules)
+        dq_metrics = evaluate_dq_rules(df=stage_df, rules=dq_rules)
         dq_result = dq_metrics["overall_result"]
 
         dq_df = build_dq_results_df(
@@ -527,7 +526,7 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
             last_watermark_ts=last_wm,
         )
 
-        logger.info("Silver erp_account_master_snapshot | row_in=%d | rows_out=%d | rows_quarantined=%d",
+        logger.info("Silver erp_account_master_snapshot SUCCESS | row_in=%d | rows_out=%d | rows_quarantined=%d",
                     rows_in,
                     rows_out,
                     rows_quarantined
@@ -545,7 +544,7 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
             dq_result=dq_result,
-            last_watermark_ts=last_wm
+            last_watermark_ts=last_wm,
         )
-        logger.exception("Silver_erp_account_master_snapshot")
+        logger.exception("Silver_erp_account_master_snapshot FAILED")
         raise

@@ -27,7 +27,7 @@ def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]
     
     return {"base_url": base_url, "endpoint": endpoint}
 
-def main() -> None:
+def run_extract_rest_to_landing() -> None:
     env = load_envs()
     setup_log(os.getenv("LOG_LEVEL", "INFO").upper())
     args = _get_job_args()
@@ -79,4 +79,4 @@ def main() -> None:
         except Exception:
             pass
 
-        main()
+        run_extract_rest_to_landing()

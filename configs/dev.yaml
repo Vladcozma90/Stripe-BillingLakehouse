@@ -201,7 +201,39 @@ datasets:
   
   stripe_customers:
     landing_format: json
+    data_quality:
+      rules:
+        customer_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        customer_created_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        email:
+          max_null: 0.05
+          severity: warn
+
+        account_id:
+          max_null: 0.10
+          severity: warn
+
+        country_code:
+          max_null: 0.20
+          severity: warn
+
+        currency:
+          max_null: 0.20
+          severity: warn
+
   stripe_subscriptions:
     landing_format: json
+    data_quality:
+      rules:
+        
+
   stripe_invoices:
     landing_format: json

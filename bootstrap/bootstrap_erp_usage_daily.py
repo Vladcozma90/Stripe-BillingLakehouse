@@ -81,14 +81,14 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
                 units_raw BIGINT,
                 source_system STRING,
                 batch_id STRING,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE,
                 _ingest_ts TIMESTAMP,
                 _ingest_date DATE,
                 _file_name STRING,
                 _source STRING,
-                _landing_format STRING
+                _landing_format STRING,
+                etl_run_id STRING,
+                silver_processed_ts TIMESTAMP,
+                silver_processed_date DATE
                 )
                 USING DELTA
                 LOCATION '{cfg["silver_quarantine_path"]}'

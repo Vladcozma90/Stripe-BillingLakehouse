@@ -46,7 +46,7 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
               USING DELTA
               LOCATION '{cfg["bronze_path"]}'
             """)
-    logging.info("Ensure table exists: %s", f"{cfg["bronze_table"]}")
+    logger.info("Ensure table exists: %s", f"{cfg["bronze_table"]}")
 
 
     spark.sql(f"""
@@ -86,14 +86,14 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
                 churned_at_raw DATE,
                 source_system STRING,
                 snapshot_dt DATE,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE,
                 _ingest_ts TIMESTAMP,
                 _ingest_date DATE,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING,
+                etl_run_id STRING,
+                silver_processed_ts TIMESTAMP,
+                silver_processed_date DATE
                 )
                 USING DELTA
                 LOCATION '{cfg["silver_quarantine_path"]}'
@@ -115,12 +115,12 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
                 churned_at_raw DATE,
                 source_system STRING,
                 snapshot_dt DATE,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING,
+                etl_run_id STRING,
+                silver_processed_ts TIMESTAMP,
+                silver_processed_date DATE
                 )
                 USING DELTA
                 LOCATION '{cfg["silver_current_path"]}'

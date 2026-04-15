@@ -166,7 +166,7 @@ def evaluate_dq_rules(
             
             if "unique" in column_name:
                 distinct_count = int(agg_row[f"{column_name}__distinct_count"])
-                null_count_for_unique = int(f"{column_name}__null_count_for_unique")
+                null_count_for_unique = int(agg_row[f"{column_name}__null_count_for_unique"])
                 non_null_rows = total_rows - null_count_for_unique
                 duplicate_count = max(non_null_rows - distinct_count, 0)
                 actual_value = int(duplicate_count / total_rows) if total_rows else 0.0
