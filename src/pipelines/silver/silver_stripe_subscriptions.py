@@ -386,6 +386,7 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
                 run_id=run_id,
                 last_watermark_ts=last_wm
             )
+            logger.info("No new data. Exiting.")
             return
         
         stage_df = _build_stage_stripe_subscriptions(

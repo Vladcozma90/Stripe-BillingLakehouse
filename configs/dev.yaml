@@ -277,3 +277,43 @@ datasets:
 
   stripe_invoices:
     landing_format: json
+    data_quality:
+      rules:
+        subscription_item_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        subscription_id:
+          max_null: 0.0
+          severity: error
+
+        price_id:
+          max_null: 0.0
+          severity: error
+
+        product_id:
+          max_null: 0.0
+          severity: error
+
+        quantity:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        unit_amount:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        billing_interval:
+          accepted_values: ["day", "week", "month", "year"]
+          severity: warn
+
+        usage_type:
+          accepted_values: ["licensed", "metered"]
+          severity: warn
+
+        item_created_ts:
+          valid_timestamp: true
+          severity: error
