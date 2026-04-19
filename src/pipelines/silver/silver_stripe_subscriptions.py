@@ -14,7 +14,9 @@ from pyspark.sql.functions import (
     from_unixtime,
     current_timestamp,
     current_date,
-    sha2
+    sha2,
+    concat_ws,
+    coalesce
 )
 
 from services.envs import EnvConfig
@@ -145,7 +147,7 @@ def _build_unknown_df(spark: SparkSession, run_id: str) -> DataFrame:
 
 
 def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
-    scd2_columns = [
+    scd2_cols = [
         "subscription_id",
         "stripe_customer_id",
         "subscription_status",
@@ -170,7 +172,160 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
     return (
         dedup_df
         .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("timestamp"))
+        .withColumn(
+            "record_hash",
+            sha2(
+                concat_ws(
+                    "||",
+                    *[coalesce(col(c).cast("string"), lit("")) for c in scd2_cols]
+                ),
+                256,
+            ),
+        )
+        .select(
+            "subscription_id",
+            "stripe_customer_id",
+            "subscription_status",
+            "collection_method",
+            "currency",
+            "latest_invoice_id",
+            "created_ts",
+            "start_date_ts",
+            "billing_cycle_anchor_ts",
+            "cancel_at_ts",
+            "canceled_at_ts",
+            "ended_at_ts",
+            "trial_start_ts",
+            "trial_end_ts",
+            "cancel_at_period_end",
+            "livemode",
+            "_file_name",
+            "_source",
+            "_landing_format",
+            "etl_run_id",
+            "silver_effective_start_ts",
+            "record_hash"
+        )
     )
+
+
+def _merge_conform_scd2(
+        spark: SparkSession,
+        conform_table: str,
+        incoming_df: DataFrame,
+        run_id: str,
+        key_columns: list[str],
+) -> None:
+    
+    if not key_columns:
+        raise ValueError("key_columns must not be empty.")
+    
+    missing_columns = [c for c in key_columns if c not in incoming_df.columns]
+
+    if missing_columns:
+        raise ValueError(f"key columns missing from incoming_df: {missing_columns}")
+    
+    conform_dt = DeltaTable.forName(spark, conform_table)
+
+    unknown_df = _build_unknown_df(spark=spark, run_id=run_id)
+
+    (
+        conform_dt.alias("t")
+        .merge(unknown_df.alias("s"), condition="t.stripe_subscriptions_sk = s.stripe_subscriptions_sk")
+        .whenNotMatchedInsertAll()
+        .execute()
+    )
+
+    conform_active = (
+        conform_dt.toDF()
+        .filter(col("is_current"))
+        .select(*key_columns, "record_hash")
+    )
+
+    join_condition = " AND ".join([f"inc.{c} = con.{c}" for c in key_columns])
+
+
+    joined_df = incoming_df.alias("inc").join(
+        conform_active.alias("con"),
+        on=join_condition,
+        how="left"
+    )
+
+    changed_df = (
+        joined_df
+        .filter(col("con.record_hash").isNotNull() & (col("inc.record_hash") != col("con.record_hash")))
+        .select("inc.*")
+    )
+
+    new_df = (
+        joined_df
+        .filter(col("con.record_hash").isNull())
+        .select("inc.*")
+    )
+
+    update_changed_df = changed_df.withColumn("scd_action", lit("UPDATE"))
+
+    insert_changed_df = changed_df.withColumn("scd_action", lit("INSERT"))
+
+    insert_new_df = new_df.withColumn("scd_action", lit("INSERT"))
+
+    staged_df = (
+        update_changed_df
+        .unionByName(insert_changed_df)
+        .unionByName(insert_new_df)
+        .withColumn("is_current", lit(True))
+        .withColumn("silver_effective_end_ts", lit(None).cast("timestamp"))
+        .withColumn("updated_at", current_timestamp())
+    )
+
+    merge_condition = " AND ".join([*(f"t.{c} = s.{c}" for c in key_columns), "t.is_current = true"])
+
+    (
+        conform_dt.alias("t")
+        .merge(staged_df.alias("s"), condition=merge_condition)
+        .whenMatchedUpdate(
+            condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
+            set={
+                "silver_effective_end_ts" : "s.silver_effective_start_ts",
+                "updated_at": "s.updated_at",
+                "is_current": "false",
+                "etl_run_id": "s.etl_run_id"
+            }
+        )
+        .whenNotMatchedInsert(
+            condition="s.scd_action = 'INSERT'",
+            values={
+                "subscription_id": "s.subscription_id",
+                "stripe_customer_id": "s.stripe_customer_id",
+                "subscription_status": "s.subscription_status",
+                "collection_method": "s.collection_method",
+                "currency": "s.currency",
+                "latest_invoice_id": "s.latest_invoice_id",
+                "created_ts": "s.created_ts",
+                "start_date_ts": "s.start_date_ts",
+                "billing_cycle_anchor_ts" : "s.billing_cycle_anchor_ts",
+                "cancel_at_ts": "s.cancel_at_ts",
+                "canceled_at_ts": "s.canceled_at_ts",
+                "ended_at_ts": "s.ended_at_ts",
+                "trial_start_ts": "s.trial_start_ts",
+                "trial_end_ts": "s.trial_end_ts",
+                "cancel_at_period_end": "s.cancel_at_period_end",
+                "livemode": "s.livemode",
+                "_file_name": "s._file_name",
+                "_source": "s._source",
+                "_landing_format": "s._landing_format",
+                "etl_run_id": "s.etl_run_id",
+                "silver_effective_start_ts": "s.silver_effective_start_ts",
+                "silver_effective_end_ts": "s.silver_effective_end_ts",
+                "record_hash": "s.record_hash",
+                "is_current": "s.is_current"
+            }
+        )
+        .execute()
+    )
+
+    
+
 
 
 def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
@@ -301,18 +456,58 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
 
         # conform creation
 
+        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
 
+        _merge_conform_scd2(
+            spark=spark,
+            conform_table=cfg["conform_table"],
+            incoming_df=incoming_df,
+            run_id=run_id,
+            key_columns=business_key,
+        )
 
-
+        upsert_watermark(
+            spark=spark,
+            state_table=cfg["state_table"],
+            new_wm=new_wm,
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+        )
         
+        update_run_log_success(
+            spark=spark,
+            run_logs_table=cfg["run_logs_table"],
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+            dq_result=dq_result,
+            rows_in=rows_in,
+            rows_out=rows_out,
+            rows_quarantined=rows_quarantined,
+            last_watermark_ts=last_wm,
+        )
 
-        
+        logger.info("Silver stripe_subscriptions | rows_in = %d | rows_out = %d | rows_quarantined =%d",
+                    rows_in,
+                    rows_out,
+                    rows_quarantined
+                    )
 
-
-        
-
-
-
-    
     except Exception as e:
-        pass
+        update_run_log_failure(
+            spark=spark,
+            run_logs_table=cfg["run_logs_table"],
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+            error_msg=e,
+            rows_in=rows_in,
+            rows_out=rows_out,
+            rows_quarantined=rows_quarantined,
+            dq_result=dq_result,
+            last_watermark_ts=last_wm,
+        )
+
+        logger.exception("Silver strip_customers FAILED")
+        raise

@@ -233,6 +233,46 @@ datasets:
     landing_format: json
     data_quality:
       rules:
+        subscription_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        customer_id:
+          max_null: 0.0
+          severity: error
+
+        subscription_status:
+          max_null: 0.0
+          accepted_values: ["trialing", "active", "past_due", "canceled", "unpaid", "incomplete", "incomplete_expired", "paused"]
+          severity: error
+
+        created_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        current_period_start_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        current_period_end_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        currency:
+          max_null: 0.10
+          severity: warn
+
+        latest_invoice_id:
+          max_null: 0.25
+          severity: warn
+
+        account_id:
+          max_null: 0.25
+          severity: warn
         
 
   stripe_invoices:

@@ -208,9 +208,10 @@ def _merge_conform_scd2(
 
     join_condition = " AND ".join([f"inc.{c} = con.{c}" for c in key_columns])
 
-    joined_df = (
-        incoming_df.alias("inc")
-        .join(conform_active.alias("con"), on=join_condition, how="left")
+    joined_df = incoming_df.alias("inc").join(
+        conform_active.alias("con"),
+        on=join_condition,
+        how="left"
     )
 
     changed_df = (
@@ -240,7 +241,7 @@ def _merge_conform_scd2(
         .withColumn("updated_at", current_timestamp())
     )
 
-    merge_condition = " AND ".join([*(f"t.{c} = s.{c}" for c in key_columns), "t.is_current"])
+    merge_condition = " AND ".join([*(f"t.{c} = s.{c}" for c in key_columns), "t.is_current = true"])
 
     (
         conform_dt.alias("t")
@@ -441,7 +442,7 @@ def run_silver_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
             last_watermark_ts=last_wm,
         )
 
-        logger.info("Silver stripe_customers SUCCESS | row_in=%d | rows_out=%d | rows_quarantined=%d",
+        logger.info("Silver stripe_customers SUCCESS | rows_in=%d | rows_out=%d | rows_quarantined=%d",
                     rows_in,
                     rows_out,
                     rows_quarantined

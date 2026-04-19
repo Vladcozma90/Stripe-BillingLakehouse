@@ -130,6 +130,7 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
+                account_master_snapshot_sk BIGINT,
                 account_id STRING,
                 customer_name STRING,
                 email STRING,

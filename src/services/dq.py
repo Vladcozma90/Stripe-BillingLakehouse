@@ -143,7 +143,7 @@ def evaluate_dq_rules(
                     }
                 )
             
-            if "accepted_value" in column_name:
+            if "accepted_value" in column_rules:
                 fail_count = int(agg_row[f"{column_name}__accepted_values_fail_count"])
                 actual_value = (fail_count / total_rows) if total_rows else 0.0
                 threshold_value = float(column_rules["accepted_value"])
@@ -164,7 +164,7 @@ def evaluate_dq_rules(
                     }
                 )
             
-            if "unique" in column_name:
+            if "unique" in column_rules and column_rules["unique"]:
                 distinct_count = int(agg_row[f"{column_name}__distinct_count"])
                 null_count_for_unique = int(agg_row[f"{column_name}__null_count_for_unique"])
                 non_null_rows = total_rows - null_count_for_unique

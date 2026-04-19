@@ -271,7 +271,7 @@ def _merge_conform_scd2(
         .select(*key_columns, "record_hash")
     )
 
-    join_condition = " AND ".join([f"t.{c} = s.{c}" for c in key_columns])
+    join_condition = " AND ".join([f"inc.{c} = con.{c}" for c in key_columns])
 
     joined_df = incoming_df.alias("inc").join(
         conform_active.alias("con"),
