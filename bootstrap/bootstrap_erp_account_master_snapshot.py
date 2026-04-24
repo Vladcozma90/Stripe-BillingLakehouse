@@ -11,12 +11,14 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_account_master_snapshot",
         "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current__erp_account_master_snapshot",
         "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_account_master_snapshot",
+        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_account_master",
 
         "bronze_path": f"{env.raw_base_path}/{env.project}/b_erp_account_master_snapshot",
         "silver_dq_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
         "silver_quarantine_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
         "silver_current_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_current_erp_account_master_snapshot",
         "silver_conform_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
+        "gold_path": f"{env.catalog}/{env.project}/g_dim_account_master/g_dim_account_master",
     }
 
 
@@ -24,30 +26,7 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_bronze")
-
-    spark.sql(f"""
-              CREATE TABLE IF NOT EXISTS {cfg["bronze_table"]} (
-                usage_id STRING,
-                event_ts TIMESTAMP,
-                usage_date DATE,
-                account_id STRING,
-                feature_code STRING,
-                active_users BIGINT,
-                units_raw BIGINT,
-                source_system STRING,
-                batch_id STRING,
-                _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
-                _file_name STRING,
-                _source STRING,
-                _landing_format STRING
-              )
-              USING DELTA
-              LOCATION '{cfg["bronze_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["bronze_table"]}")
-
+    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_silver")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
@@ -130,7 +109,7 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
-                account_master_snapshot_sk BIGINT,
+                account_master_snapshot_sk BIGINT GENERATED ALWAYS AS IDENTITY,
                 account_id STRING,
                 customer_name STRING,
                 email STRING,
@@ -143,7 +122,7 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
                 status STRING,
                 churned_at_raw DATE,
                 source_system STRING,
-                snapshot_dt DATE
+                snapshot_dt DATE,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING,
@@ -158,3 +137,11 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
                 LOCATION '{cfg["silver_conform_path"]}'
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_conform_table"]}")
+
+
+    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_gold")
+
+    spark.sql(f"""
+                CREATE TABLE IF NOT EXISTS {}
+            """)
+

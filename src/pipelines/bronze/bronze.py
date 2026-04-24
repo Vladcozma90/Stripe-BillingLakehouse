@@ -4,6 +4,7 @@ import logging
 from typing import Any
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import current_timestamp, current_date, input_file_name, lit
+from services.audit import insert_run_log_start, update_run_log_success, update_run_log_failure
 
 from src.services.envs import EnvConfig
 
@@ -11,14 +12,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig, dataset: str) -> dict[str, Any]:
     return {
-        #PATHS
-        "src_path": f"{env.landing_base_path}/{env.project}/{dataset}", 
-        "tgt_path": f"{env.raw_base_path}/{env.project}/b_{dataset}",
-        "checkpoint_path": f"{env.checkpoint_base_path}/{env.project}/bronze/{dataset}/checkpoint",
-        "schema_path": f"{env.checkpoint_base_path}/{env.project}/bronze/{dataset}/schema",
-        #TABLES
-        "tgt_table": f"{env.catalog}.{env.project}_bronze.{dataset}",
         "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
+        "tgt_table": f"{env.catalog}.{env.project}_bronze.{dataset}",
+        
+        "src_path": f"{env.landing_base_path}/{env.project}/{dataset}", 
+        "tgt_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/b_{dataset}",
+        "checkpoint_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.project}/bronze/{dataset}/checkpoint",
+        "schema_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.project}/bronze/{dataset}/schema",
+        
+        
     }
 
 def _get_landing_format(env: EnvConfig, dataset: str) -> str:
@@ -81,11 +83,16 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
 
     logger.info("Starting bronze ingestion | dataset=%s | format=%s | run_id=%s", dataset, format, run_id)
 
-    spark.sql(f"""
-                INSERT INTO {cfg["run_logs_table"]} (pipeline_name, dataset, target_table, run_id, started_at, status)
-                VALUES ('{pipeline_name}', '{dataset}', '{cfg["tgt_table"]}', '{run_id}', current_timestamp(), 'RUNNING')
-            """)
-    
+
+    insert_run_log_start(
+        spark=spark,
+        run_logs_table=cfg["run_logs_table"],
+        pipeline_name=pipeline_name,
+        dataset=dataset,
+        target_table=cfg["tgt_table"],
+        run_id=run_id,
+    )
+
     rows_in = 0
 
     try:
@@ -120,28 +127,35 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
 
         rows_in = _sum_rows_in(query)
 
-        spark.sql(f"""
-                    UPDATE {cfg["run_logs_table"]}
-                    SET finished_at = current_timestamp(),
-                        status = 'SUCCESS',
-                        rows_in = {rows_in},
-                        rows_out = {rows_in}
-                    WHERE pipeline_name = '{pipeline_name}' AND dataset = '{dataset}' AND run_id = '{run_id}'
-                """)
+        update_run_log_success(
+            spark=spark,
+            run_logs_table=cfg["run_logs_table"],
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+            dq_result=None,
+            rows_in=rows_in,
+            rows_out=rows_in,
+            rows_quarantined=0,
+            last_watermark_ts=None
+        )
         
         logger.info("Bronze ingest SUCCESS | dataset=%s | rows_in=%d | run_id=%s |", dataset, rows_in, run_id)
 
     
     except Exception as e:
         logger.exception("Bronze ingestion FAILED | dataset=%s | run_id=%s", dataset, run_id)
-        msg = str(e).replace("'", "''")
-        spark.sql(f"""
-                    UPDATE {cfg["run_logs_table"]}
-                    SET finished_at = current_timestamp(),
-                        status = 'FAILED',
-                        error_msg = '{msg}',
-                        rows_in = {rows_in},
-                        rows_out = 0
-                    WHERE pipeline_name = '{pipeline_name}' AND dataset = '{dataset}' AND run_id = '{run_id}'
-                """)
+        update_run_log_failure(
+            spark=spark,
+            run_logs_table=cfg["run_logs_table"],
+            pipeline_name=pipeline_name,
+            dataset=dataset,
+            run_id=run_id,
+            error_msg=e,
+            rows_in=rows_in,
+            rows_out=0,
+            rows_quarantined=0,
+            dq_result=None,
+            last_watermark_ts=None,
+        )
         raise

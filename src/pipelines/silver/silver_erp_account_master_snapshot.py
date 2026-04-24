@@ -31,7 +31,6 @@ from services.dq import evaluate_dq_rules, build_dq_results_df, build_dq_failure
 from services.delta_table import write_append_table
 from services.dq import quarantine_by_business_key
 from services.transformations import deduplicate_by_business_key
-from services.snapshot import merge_current_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -42,14 +41,12 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
         "dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_account_master_snapshot",
         "quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_account_master_snapshot",
-        "current_table": f"{env.catalog}.{env.project}_silver.s_current_erp_account_master_snapshot",
         "conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_account_master_snapshot",
 
-        "bronze_path": f"{env.raw_base_path}/{env.catalog}/b_erp_account_master_snapshot",
-        "dq_path": f"{env.curated_base_path}/{env.catalog}/erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
-        "quarantine_path": f"{env.curated_base_path}/{env.catalog}/erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
-        "current_path": f"{env.curated_base_path}/{env.catalog}/erp_account_master_snapshot/s_current_erp_account_master_snapshot",
-        "conform_path": f"{env.curated_base_path}/{env.catalog}/erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
+        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/b_erp_account_master_snapshot",
+        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
+        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
+        "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
     }
 
 def _get_required_columns() -> list[str]:
@@ -484,14 +481,6 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
 
-        # current creation
-
-        merge_current_snapshot(
-            spark=spark,
-            current_table=cfg["current_table"],
-            df=dedup_df,
-            key_columns=business_key
-        )
 
         # conform creation
 

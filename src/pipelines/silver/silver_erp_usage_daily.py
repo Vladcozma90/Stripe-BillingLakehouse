@@ -27,10 +27,10 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_usage_daily",
         "current_table": f"{env.catalog}.{env.project}_silver.s_current_erp_usage_daily",
 
-        "bronze_path": f"{env.raw_base_path}/{env.project}/erp_usage_daily",
-        "dq_path": f"{env.curated_base_path}/{env.project}/erp_usage_daily/s_dq_erp_usage_daily",
-        "quarantine_path": f"{env.curated_base_path}/{env.project}/erp_usage_daily/s_quarantine_erp_usage_daily",
-        "current_path": f"{env.curated_base_path}/{env.project}/erp_usage_daily/s_current_erp_usage_daily",
+        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/erp_usage_daily",
+        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_usage_daily/s_dq_erp_usage_daily",
+        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_usage_daily/s_quarantine_erp_usage_daily",
+        "current_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_usage_daily/s_current_erp_usage_daily",
         
     }
 
@@ -58,14 +58,14 @@ def _build_stage_silver_erp_usage_daily(incr_df: DataFrame, run_id: str) -> Data
         .withColumn("usage_id", lower(trim(col("usage_id"))).cast("string"))
         .withColumn("event_ts", col("event_ts").cast("timestamp"))
         .withColumn("usage_date", coalesce(
-            to_date(trim(col("usage_date"), "yyyy-MM-dd")),
-            to_date(trim(col("usage_date"), "dd-MM-yyyy")))
+            to_date(trim(col("usage_date")), "yyyy-MM-dd"),
+            to_date(trim(col("usage_date")), "dd-MM-yyyy"))
             )
         .withColumn("account_id", trim(col("account_id")).cast("string"))
         .withColumn("feature_code", lower(trim(col("feature_code"))).cast("string"))
         .withColumn("active_users", col("active_users").cast("int"))
         .withColumn("units_raw", col("units_raw").cast("int"))
-        .withColumn("source_system", upper(trim(col("units_raw"))).cast("string"))
+        .withColumn("source_system", upper(trim(col("source_system"))).cast("string"))
         .withColumn("batch_id", trim(col("batch_id")).cast("string"))
         .withColumn("etl_run_id", lit(run_id))
         .withColumn("silver_processed_ts", current_timestamp())
@@ -114,7 +114,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
         run_logs_table=cfg["run_logs_table"],
         pipeline_name=pipeline_name,
         dataset=dataset,
-        target_table=cfg["conform_table"]
+        target_table=cfg["current_table"]
     )
 
     try:

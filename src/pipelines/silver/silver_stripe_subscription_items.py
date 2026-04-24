@@ -1,9 +1,6 @@
 from __future__ import annotations
 import uuid
 import logging
-from datetime import datetime
-
-from delta.tables import DeltaTable
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col,
@@ -14,9 +11,6 @@ from pyspark.sql.functions import (
     from_unixtime,
     current_timestamp,
     current_date,
-    sha2,
-    concat_ws,
-    coalesce
 )
 
 from services.envs import EnvConfig
@@ -54,7 +48,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
 def _get_required_columns() -> list[str]:
     return [
         "_extracted_at",
-        "date",
+        "data",
         "_ingest_date",
         "_file_name",
         "_source",

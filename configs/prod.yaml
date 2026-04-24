@@ -1,13 +1,14 @@
-catalog: dev_commerce
+catalog: prod_commerce
 
 project: billinglakehouse
 
 paths:
-  landing_base_path: "abfss://source@databricksendtoendtest.dfs.core.windows.net"
-  raw_base_path: "abfss://raw@databricksendtoendtest.dfs.core.windows.net"
-  curated_base_path: "abfss://curated@databricksendtoendtest.dfs.core.windows.net"
-  ops_base_path: "abfss://ops@databricksendtoendtest.dfs.core.windows.net"
-  checkpoint_base_path: "abfss://checkpoint@databricksendtoendtest.dfs.core.windows.net"
+  landing_base_path: "abfss://billinglakehouse-prod-source@databricksendtoendtest.dfs.core.windows.net"
+  bronze_base_path: "abfss://billinglakehouse-prod-bronze@databricksendtoendtest.dfs.core.windows.net"
+  silver_base_path: "abfss://billinglakehouse-prod-silver@databricksendtoendtest.dfs.core.windows.net"
+  gold_base_path: "abfss://billinglakehouse-prod-gold@databricksendtoendtest.dfs.core.windows.net"
+  ops_base_path: "abfss://billinglakehouse-prod-ops@databricksendtoendtest.dfs.core.windows.net"
+  checkpoint_base_path: "abfss://billinglakehouse-prod-checkpoint@databricksendtoendtest.dfs.core.windows.net"
 
 
 api_sources:
@@ -18,6 +19,8 @@ api_sources:
         endpoint: "customers"
       stripe_subscriptions:
         endpoint: "subscriptions"
+      stripe_subscription_items:
+        endpoint: "subscription_items"
       stripe_invoices:
         endpoint: "invoices"
 
@@ -201,7 +204,195 @@ datasets:
   
   stripe_customers:
     landing_format: json
+    data_quality:
+      rules:
+        customer_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        customer_created_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        email:
+          max_null: 0.05
+          severity: warn
+
+        account_id:
+          max_null: 0.10
+          severity: warn
+
+        country_code:
+          max_null: 0.20
+          severity: warn
+
+        currency:
+          max_null: 0.20
+          severity: warn
+
   stripe_subscriptions:
     landing_format: json
+    data_quality:
+      rules:
+        subscription_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        customer_id:
+          max_null: 0.0
+          severity: error
+
+        subscription_status:
+          max_null: 0.0
+          accepted_values: ["trialing", "active", "past_due", "canceled", "unpaid", "incomplete", "incomplete_expired", "paused"]
+          severity: error
+
+        created_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        current_period_start_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        current_period_end_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        currency:
+          max_null: 0.10
+          severity: warn
+
+        latest_invoice_id:
+          max_null: 0.25
+          severity: warn
+
+        account_id:
+          max_null: 0.25
+          severity: warn
+        
+
+  stripe_subscription_items:
+    landing_format: json
+    data_quality:
+      rules:
+        subscription_item_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        subscription_id:
+          max_null: 0.0
+          severity: error
+
+        price_id:
+          max_null: 0.0
+          severity: error
+
+        product_id:
+          max_null: 0.0
+          severity: error
+
+        quantity:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        unit_amount:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        billing_interval:
+          accepted_values: ["day", "week", "month", "year"]
+          severity: warn
+
+        usage_type:
+          accepted_values: ["licensed", "metered"]
+          severity: warn
+
+        item_created_ts:
+          valid_timestamp: true
+          severity: error
+
+
   stripe_invoices:
     landing_format: json
+    data_quality:
+      rules:
+        invoice_id:
+          max_null: 0.0
+          unique: true
+          severity: error
+
+        stripe_customer_id:
+          max_null: 0.0
+          severity: error
+
+        invoice_status:
+          max_null: 0.0
+          accepted_values: ["draft", "open", "paid", "uncollectible", "void"]
+          severity: error
+
+        collection_method:
+          max_null: 0.0
+          accepted_values: ["charge_automatically", "send_invoice"]
+          severity: error
+
+        currency:
+          max_null: 0.10
+          severity: warn
+
+        amount_due:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        amount_paid:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        amount_remaining:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        subtotal:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        total:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        attempt_count:
+          max_null: 0.0
+          min_value: 0
+          severity: error
+
+        created_ts:
+          max_null: 0.0
+          valid_timestamp: true
+          severity: error
+
+        due_date_ts:
+          max_null: 0.50
+          valid_timestamp: true
+          severity: warn
+
+        subscription_id:
+          max_null: 0.50
+          severity: warn
+
+        payment_intent_id:
+          max_null: 0.70
+          severity: warn

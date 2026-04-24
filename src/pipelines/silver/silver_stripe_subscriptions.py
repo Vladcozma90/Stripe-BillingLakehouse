@@ -446,15 +446,6 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
         rows_quarantined = bad_records.count()
 
 
-        # current creation
-
-        merge_current_snapshot(
-            spark=spark,
-            current_table=cfg["current_table"],
-            df=dedup_df,
-            key_columns=business_key
-        )
-
         # conform creation
 
         incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)

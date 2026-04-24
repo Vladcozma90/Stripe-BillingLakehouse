@@ -26,36 +26,7 @@ def bootstrap_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating stripe_subscriptions in schema %s", f"{env.catalog}.{env.project}_bronze")
-
-    spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["bronze_table"]} (
-                subscription_id STRING,
-                stripe_customer_id STRING,
-                subscription_status STRING,
-                collection_method STRING,
-                currency STRING,
-                latest_invoice_id STRING,
-                created_ts TIMESTAMP,
-                start_date_ts TIMESTAMP,
-                billing_cycle_anchor_ts TIMESTAMP,
-                cancel_at_ts TIMESTAMP,
-                canceled_at_ts TIMESTAMP,
-                trial_start_ts TIMESTAMP,
-                trial_end_ts TIMESTAMP,
-                cancel_at_period_end BOOLEAN,
-                livemode BOOLEAN,
-                api_extracted_ts TIMESTAMP,
-                _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
-                _file_name STRING,
-                _source_format STRING,
-                )
-                USING DELTA
-                LOCATION '{cfg["bronze_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["bronze_table"]}")
-
+    logger.info("Creating/validating stripe_subscriptions in schema %s", f"{env.catalog}.{env.project}_silver")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
@@ -145,7 +116,7 @@ def bootstrap_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
-                stripe_subscriptions_sk BIGINT,
+                stripe_subscriptions_sk BIGINT GENERATED ALWAYS AS IDENTITY,
                 subscription_id STRING,
                 stripe_customer_id STRING,
                 subscription_status STRING,

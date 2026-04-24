@@ -399,14 +399,6 @@ def run_silver_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
 
-        # current creation
-
-        merge_current_snapshot(
-            spark=spark,
-            current_table=cfg["current_table"],
-            df=dedup_df,
-            key_columns=business_key,
-        )
 
         # conform creation
 

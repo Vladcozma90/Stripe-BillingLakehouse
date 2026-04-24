@@ -23,30 +23,7 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_bronze")
-
-    spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["bronze_table"]} (
-                usage_id STRING,
-                event_ts TIMESTAMP,
-                usage_date DATE,
-                account_id STRING,
-                feature_code STRING,
-                active_users BIGINT,
-                units_raw BIGINT,
-                source_system STRING,
-                batch_id STRING,
-                _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
-                _file_name STRING,
-                _source STRING,
-                _landing_format STRING
-                )
-                USING DELTA
-                LOCATION '{cfg["bronze_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["bronze_table"]}")
-
+    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_silver")
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (

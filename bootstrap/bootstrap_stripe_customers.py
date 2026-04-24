@@ -25,33 +25,7 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating stripe_customers in schema %s", f"{env.catalog}.{env.project}_bronze")
-
-    spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["bronze_table"]} (
-                stripe_customer_id STRING,
-                email STRING,
-                currency STRING,
-                description STRING,
-                order_id STRING,
-                address STRING,
-                customer_created_ts TIMESTAMP,
-                is_delinquent BOOLEAN,
-                livemode BOOLEAN,
-                api_extracted_ts TIMESTAMP,
-                _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
-                _file_name STRING,
-                _source_format STRING,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE
-                )
-                USING DELTA
-                LOCATION '{cfg["bronze_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["bronze_table"]}")
-
+    logger.info("Creating/validating stripe_customers in schema %s", f"{env.catalog}.{env.project}_silver")
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
@@ -129,7 +103,7 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
-                stripe_customers_sk BIGINT,
+                stripe_customers_sk BIGINT GENERATED ALWAYS AS IDENTITY,
                 stripe_customer_id STRING,
                 email STRING,
                 currency STRING,

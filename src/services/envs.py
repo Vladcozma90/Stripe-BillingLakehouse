@@ -10,8 +10,9 @@ class EnvConfig:
     catalog: str
     project: str
     landing_base_path: str
-    raw_base_path: str
-    curated_base_path: str
+    bronze_base_path: str
+    silver_base_path: str
+    gold_base_path: str
     ops_base_path: str
     checkpoint_base_path: str
     api_sources: dict[str, Any]
@@ -81,8 +82,9 @@ def load_envs() -> EnvConfig:
         catalog=_require_str(cfg.get("catalog"), "catalog"),
         project=_require_str(cfg.get("project"), "project"),
         landing_base_path=_require_str(paths.get("landing_base_path"), "paths.landing_base_path"),
-        raw_base_path=_require_str(paths.get("raw_base_path"), "paths.raw_base_path"),
-        curated_base_path=_require_str(paths.get("curated_base_path"), "paths.curated_base_path"),
+        bronze_base_path=_require_str(paths.get("bronze_base_path"), "paths.bronze_base_path"),
+        silver_base_path=_require_str(paths.get("silver_base_path"), "paths.silver_base_path"),
+        gold_base_path=_require_str(paths.get("gold_base_path"), "paths.gold_base_path"),
         ops_base_path=_require_str(paths.get("ops_base_path"), "ops_base_path"),
         checkpoint_base_path=_require_str(paths.get("checkpoint_base_path"), "paths.checkpoint_base_path"),
         api_sources=api_sources,

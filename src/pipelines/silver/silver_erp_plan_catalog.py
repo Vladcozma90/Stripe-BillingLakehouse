@@ -26,7 +26,6 @@ from services.audit import (
 
 from services.watermark import read_incremental_by_watermark, upsert_watermark
 from services.delta_table import write_append_table
-from services.snapshot import merge_current_snapshot
 from services.dq import (evaluate_dq_rules,
                          build_dq_results_df,
                          build_dq_failure_message,
@@ -42,14 +41,12 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
         "dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_plan_catalog",
         "quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_plan_catalog",
-        "current_table": f"{env.catalog}.{env.project}_silver.s_current_erp_plan_catalog",
         "conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_plan_catalog",
         
-        "bronze_path": f"{env.raw_base_path}/{env.project}/b_dim_erp_plan_catalog",
-        "dq_path": f"{env.curated_base_path}/{env.project}/erp_plan_catalog/s_dq_erp_plan_catalog",
-        "quarantine_path": f"{env.curated_base_path}/{env.project}/erp_plan_catalog/s_quarantine_erp_plan_catalog",
-        "current_path": f"{env.curated_base_path}/{env.project}/erp_plan_catalog/s_current_erp_plan_catalog",
-        "conform_path": f"{env.curated_base_path}/{env.project}/erp_plan_catalog/s_conform_erp_plan_catalog",
+        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/b_dim_erp_plan_catalog",
+        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_plan_catalog/s_dq_erp_plan_catalog",
+        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_plan_catalog/s_quarantine_erp_plan_catalog",
+        "conform_path": f"{env.curated_base_path}/{env.catalog}/{env.project}/erp_plan_catalog/s_conform_erp_plan_catalog",
     }
 
 
@@ -412,14 +409,6 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
         rows_quarantined = bad_records.count()
 
 
-        # current creation
-        merge_current_snapshot(
-            spark=spark,
-            current_table=cfg["current_table"],
-            df=dedup_df,
-            key_columns=business_key
-        )
-        
         # conform creation
         incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
         _merge_conform_scd2(
