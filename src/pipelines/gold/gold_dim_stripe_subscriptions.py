@@ -42,7 +42,6 @@ def _get_required_columns() -> list[str]:
         "collection_method",
         "currency",
         "latest_invoice_id",
-        "account_id",
         "created_ts",
         "start_date_ts",
         "billing_cycle_anchor_ts",
@@ -70,7 +69,6 @@ def _build_gold_dim_subscription(silver_conform_df: DataFrame) -> DataFrame:
         .withColumn("collection_method", lower(trim(col("collection_method"))).cast("string"))
         .withColumn("currency", lower(trim(col("currency"))).cast("string"))
         .withColumn("latest_invoice_id", trim(col("latest_invoice_id")).cast("string"))
-        .withColumn("account_id", trim(col("account_id")).cast("string"))
         .withColumn("created_ts", col("created_ts").cast("timestamp"))
         .withColumn("start_date_ts", col("start_date_ts").cast("timestamp"))
         .withColumn("billing_cycle_anchor_ts", col("billing_cycle_anchor_ts").cast("timestamp"))
@@ -93,7 +91,6 @@ def _build_gold_dim_subscription(silver_conform_df: DataFrame) -> DataFrame:
             "collection_method",
             "currency",
             "latest_invoice_id",
-            "account_id",
             "created_ts",
             "start_date_ts",
             "billing_cycle_anchor_ts",

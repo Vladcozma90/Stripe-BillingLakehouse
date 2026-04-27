@@ -42,7 +42,6 @@ def _get_required_columns() -> list[str]:
         "customer_name",
         "currency",
         "description",
-        "account_id",
         "country_code",
         "customer_created_ts",
         "is_delinquent",
@@ -63,7 +62,6 @@ def _build_gold_dim_customer(silver_conform_df: DataFrame) -> DataFrame:
         .withColumn("customer_name", trim(col("customer_name")).cast("string"))
         .withColumn("currency", lower(trim(col("currency"))).cast("string"))
         .withColumn("description", trim(col("description")).cast("string"))
-        .withColumn("account_id", trim(col("account_id")).cast("string"))
         .withColumn("country_code", upper(trim(col("country_code"))).cast("string"))
         .withColumn("customer_created_ts", col("customer_created_ts").cast("timestamp"))
         .withColumn("is_delinquent", col("is_delinquent").cast("boolean"))
@@ -79,7 +77,6 @@ def _build_gold_dim_customer(silver_conform_df: DataFrame) -> DataFrame:
             "customer_name",
             "currency",
             "description",
-            "account_id",
             "country_code",
             "customer_created_ts",
             "is_delinquent",

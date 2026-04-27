@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 
 from src.services.envs import load_envs
 from src.services.logger import setup_log
-from pipelines.bronze.bronze import ingest_bronze
+from pipelines.bronze.bronze_ingestion import ingest_bronze
 
 
 logger = logging.getLogger(__name__)

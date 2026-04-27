@@ -105,7 +105,7 @@ def _build_stage_gold_fact_usage_daily(
         )
         .join(
             plan_current_df.alias("p"),
-            col("f.account_id") == col("p.account_id"),
+            col("a.plan_code") == col("p.plan_code"),
             "left"
         )
     )

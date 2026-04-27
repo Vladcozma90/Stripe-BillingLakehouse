@@ -25,7 +25,6 @@ from services.audit import (
 
 logger = logging.getLogger(__name__)
 
-
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
@@ -34,8 +33,6 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
 
         "gold_dim_subscription_table": f"{env.catalog}.{env.project}_gold.g_dim_subscription",
         "gold_dim_customer_table": f"{env.catalog}.{env.project}_gold.g_dim_customer",
-        "gold_dim_account_table": f"{env.catalog}.{env.project}_gold.g_dim_account",
-        "gold_dim_plan_table": f"{env.catalog}.{env.project}_gold.g_dim_plan",
 
         "gold_fact_table": f"{env.catalog}.{env.project}_gold.g_fact_subscription_item",
         "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/stripe_subscription_items/g_fact_subscription_item",
@@ -47,8 +44,6 @@ def _get_required_columns() -> list[str]:
         "subscription_item_id",
         "subscription_id",
         "stripe_customer_id",
-        "account_id",
-        "plan_code",
         "price_id",
         "product_id",
         "item_currency",
@@ -68,20 +63,16 @@ def _get_required_columns() -> list[str]:
     ]
 
 
-def _build_stage_gold_fact_subscription_item(
-    silver_df: DataFrame,
-    dim_subscription_df: DataFrame,
-    dim_customer_df: DataFrame,
-    dim_account_df: DataFrame,
-    dim_plan_df: DataFrame,
+def _build_stage_gold_fact_subscription_items(
+        silver_df: DataFrame,
+        dim_subscriptions_df: DataFrame,
+        dim_customers_df: DataFrame,
 ) -> DataFrame:
     stage_df = (
         silver_df
         .withColumn("subscription_item_id", trim(col("subscription_item_id")).cast("string"))
         .withColumn("subscription_id", trim(col("subscription_id")).cast("string"))
         .withColumn("stripe_customer_id", trim(col("stripe_customer_id")).cast("string"))
-        .withColumn("account_id", trim(col("account_id")).cast("string"))
-        .withColumn("plan_code", trim(col("plan_code")).cast("string"))
         .withColumn("price_id", trim(col("price_id")).cast("string"))
         .withColumn("product_id", trim(col("product_id")).cast("string"))
         .withColumn("item_currency", lower(trim(col("item_currency"))).cast("string"))
@@ -97,7 +88,7 @@ def _build_stage_gold_fact_subscription_item(
     )
 
     subscription_current_df = (
-        dim_subscription_df
+        dim_subscriptions_df
         .filter(col("is_current") == True)
         .select(
             col("stripe_subscriptions_sk"),
@@ -106,31 +97,11 @@ def _build_stage_gold_fact_subscription_item(
     )
 
     customer_current_df = (
-        dim_customer_df
+        dim_customers_df
         .filter(col("is_current") == True)
         .select(
             col("stripe_customers_sk"),
-            col("customer_id").alias("dim_customer_id"),
-            col("account_id").alias("dim_customer_account_id"),
-        )
-    )
-
-    account_current_df = (
-        dim_account_df
-        .filter(col("is_current") == True)
-        .select(
-            col("account_master_snapshot_sk"),
-            col("account_id").alias("dim_account_id"),
-            col("plan_code").alias("dim_account_plan_code"),
-        )
-    )
-
-    plan_current_df = (
-        dim_plan_df
-        .filter(col("is_current") == True)
-        .select(
-            col("plan_catalog_sk"),
-            col("plan_code").alias("dim_plan_code"),
+            col("customer_id").alias("dim_customer_id")
         )
     )
 
@@ -139,22 +110,12 @@ def _build_stage_gold_fact_subscription_item(
         .join(
             subscription_current_df.alias("s"),
             col("f.subscription_id") == col("s.dim_subscription_id"),
-            how="left",
+            "left"
         )
         .join(
             customer_current_df.alias("c"),
             col("f.stripe_customer_id") == col("c.dim_customer_id"),
-            how="left",
-        )
-        .join(
-            account_current_df.alias("a"),
-            col("f.account_id") == col("a.dim_account_id"),
-            how="left",
-        )
-        .join(
-            plan_current_df.alias("p"),
-            col("f.plan_code") == col("p.dim_plan_code"),
-            how="left",
+            "left"
         )
     )
 
@@ -162,20 +123,14 @@ def _build_stage_gold_fact_subscription_item(
         joined_df
         .withColumn("stripe_subscriptions_sk", coalesce(col("s.stripe_subscriptions_sk"), lit(-1)))
         .withColumn("stripe_customers_sk", coalesce(col("c.stripe_customers_sk"), lit(-1)))
-        .withColumn("account_master_snapshot_sk", coalesce(col("a.account_master_snapshot_sk"), lit(-1)))
-        .withColumn("plan_catalog_sk", coalesce(col("p.plan_catalog_sk"), lit(-1)))
         .withColumn("gold_loaded_ts", current_timestamp())
         .withColumn("gold_loaded_date", current_date())
         .select(
             col("f.subscription_item_id").alias("subscription_item_id"),
             col("stripe_subscriptions_sk"),
             col("stripe_customers_sk"),
-            col("account_master_snapshot_sk"),
-            col("plan_catalog_sk"),
             col("f.subscription_id").alias("subscription_id"),
             col("f.stripe_customer_id").alias("stripe_customer_id"),
-            col("f.account_id").alias("account_id"),
-            col("f.plan_code").alias("plan_code"),
             col("f.price_id").alias("price_id"),
             col("f.product_id").alias("product_id"),
             col("f.item_currency").alias("item_currency"),
@@ -223,8 +178,6 @@ def run_gold_fact_subscription_item(spark: SparkSession, env: EnvConfig) -> None
         silver_df = spark.table(cfg["silver_current_table"])
         dim_subscription_df = spark.table(cfg["gold_dim_subscription_table"])
         dim_customer_df = spark.table(cfg["gold_dim_customer_table"])
-        dim_account_df = spark.table(cfg["gold_dim_account_table"])
-        dim_plan_df = spark.table(cfg["gold_dim_plan_table"])
 
         required_columns = _get_required_columns()
         missing_columns = [c for c in required_columns if c not in silver_df.columns]
@@ -243,12 +196,10 @@ def run_gold_fact_subscription_item(spark: SparkSession, env: EnvConfig) -> None
             logger.info("No data in silver current. Exiting.")
             return
 
-        gold_df = _build_stage_gold_fact_subscription_item(
+        gold_df = _build_stage_gold_fact_subscription_items(
             silver_df=silver_df,
             dim_subscription_df=dim_subscription_df,
             dim_customer_df=dim_customer_df,
-            dim_account_df=dim_account_df,
-            dim_plan_df=dim_plan_df,
         )
 
         rows_in = silver_df.count()
