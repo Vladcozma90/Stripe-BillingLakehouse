@@ -19,8 +19,6 @@ def _build_config(env: EnvConfig, dataset: str) -> dict[str, Any]:
         "tgt_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/b_{dataset}",
         "checkpoint_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.project}/bronze/{dataset}/checkpoint",
         "schema_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.project}/bronze/{dataset}/schema",
-        
-        
     }
 
 def _get_landing_format(env: EnvConfig, dataset: str) -> str:

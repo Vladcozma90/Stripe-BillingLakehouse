@@ -7,15 +7,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "bronze_table": f"{env.catalog}.{env.project}_bronze.b_erp_usage_daily",
         "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_usage_daily",
         "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_usage_daily",
         "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_erp_usage_daily",
+        "gold_table": f"{env.catalog}.{env.project}_gold.g_fact_usage_daily",
 
-        "bronze_path": f"{env.raw_base_path}/{env.project}/b_erp_usage_daily",
-        "silver_dq_path": f"{env.curated_base_path}/{env.project}/erp_usage_daily/s_dq_erp_usage_daily",
-        "silver_quarantine_path": f"{env.curated_base_path}/{env.project}/erp_usage_daily/s_quarantine_erp_usage_daily",
-        "silver_current_path": f"{env.curated_base_path}/{env.project}/erp_usage_daily/s_current_erp_usage_daily",
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_usage_daily/s_dq_erp_usage_daily",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.project}/s_erp_usage_daily/s_quarantine_erp_usage_daily",
+        "silver_current_path": f"{env.silver_base_path}/{env.project}/s_erp_usage_daily/s_current_erp_usage_daily",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_fact_usage_daily",
     }
 
 
@@ -95,6 +95,33 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
                 LOCATION '{cfg["silver_current_path"]}'
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_current_table"]}")
+
+
+    logger.info("Creating/validating erp_usage_daily in schema %s", f"{env.catalog}.{env.project}_gold")
+
+    spark.sql(f"""
+                CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (
+                usage_id STRING,
+                account_master_snapshot_sk BIGINT,
+                plan_catalog_sk BIGINT,
+                event_ts TIMESTAMP,
+                f.usage_date DATE,
+                account_id STRING,
+                feature_code STRING,
+                active_users BIGINT,
+                units_raw BIGINT,
+                source_system STRING,
+                batch_id STRING,
+                _file_name STRING,
+                _source STRING,
+                _landing_format STRING,
+                etl_run_id STRING,
+                gold_loaded_ts TIMESTAMP,
+                gold_loaded_date DATE
+                )
+                USING DELTA
+                LOCATION '{cfg["gold_path"]}'
+            """)
 
 
 

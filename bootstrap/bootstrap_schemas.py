@@ -5,7 +5,7 @@ from src.services.envs import EnvConfig
 
 logger = logging.getLogger(__name__)
 
-def ensure_schemas(spark: SparkSession, env: EnvConfig) -> None:
+def bootstrap_schemas(spark: SparkSession, env: EnvConfig) -> None:
 
     spark.sql(f"USE CATALOG {env.catalog}")
 

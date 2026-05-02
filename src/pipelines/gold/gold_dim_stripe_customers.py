@@ -92,7 +92,7 @@ def _build_gold_dim_customer(silver_conform_df: DataFrame) -> DataFrame:
     )
 
 
-def run_gold_dim_customer(spark: SparkSession, env: EnvConfig) -> None:
+def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
     pipeline_name = "gold_dim_stripe_customers"
     dataset = "dim_stripe_customers"
     run_id = uuid.uuid4().hex

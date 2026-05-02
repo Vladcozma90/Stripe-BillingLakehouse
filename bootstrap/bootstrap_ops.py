@@ -1,7 +1,6 @@
 import logging
 from pyspark.sql import SparkSession
 from src.services.envs import EnvConfig
-from typing import Any
 
 logger = logging.getLogger(__name__)
 

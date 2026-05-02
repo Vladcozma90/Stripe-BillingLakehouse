@@ -6,19 +6,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "bronze_table": f"{env.catalog}.{env.project}_bronze.b_erp_account_master_snapshot",
         "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_account_master_snapshot",
         "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_account_master_snapshot",
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current__erp_account_master_snapshot",
         "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_account_master_snapshot",
         "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_account_master",
 
-        "bronze_path": f"{env.raw_base_path}/{env.project}/b_erp_account_master_snapshot",
-        "silver_dq_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
-        "silver_quarantine_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
-        "silver_current_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_current_erp_account_master_snapshot",
-        "silver_conform_path": f"{env.curated_base_path}/{env.project}/s_erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
-        "gold_path": f"{env.catalog}/{env.project}/g_dim_account_master/g_dim_account_master",
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
+        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_dim_account_master",
     }
 
 
@@ -26,7 +22,7 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_silver")
+    logger.info("Creating/validating erp_account_master_snapshot in schema %s", f"{env.catalog}.{env.project}_silver")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
@@ -79,33 +75,6 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_quarantine_table"]}")
 
-    spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["silver_current_table"]} (
-                account_id STRING,
-                customer_name STRING,
-                email STRING,
-                stripe_customer_id STRING,
-                plan_code STRING,
-                segment STRING,
-                country_code STRING,
-                region STRING,
-                account_created_at_raw DATE,
-                status STRING,
-                churned_at_raw DATE,
-                source_system STRING,
-                snapshot_dt DATE,
-                _file_name STRING,
-                _source STRING,
-                _landing_format STRING,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE
-                )
-                USING DELTA
-                LOCATION '{cfg["silver_current_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["silver_current_table"]}")
-
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
@@ -139,9 +108,30 @@ def bootstrap_erp_account_master_snapshot(spark: SparkSession, env: EnvConfig) -
     logger.info("Ensure table exists: %s", f"{cfg["silver_conform_table"]}")
 
 
-    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_gold")
+    logger.info("Creating/validating erp_account_master_snapshot in schema %s", f"{env.catalog}.{env.project}_gold")
 
     spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {}
+                CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (
+                account_master_snapshot_sk BIGINT,
+                account_id STRING,
+                customer_name STRING,
+                email STRING,
+                stripe_customer_id STRING,
+                plan_code STRING,
+                segment STRING,
+                country_code STRING,
+                region STRING,
+                account_created_at DATE,
+                status STRING,
+                churned_at DATE,
+                silver_effective_start_ts TIMESTAMP,
+                silver_effective_end_ts TIMESTAMP,
+                is_current BOOLEAN,
+                gold_loaded_ts TIMESTAMP,
+                gold_loaded_date DATE,
+                etl_run_id STRING,
+                )
+                USING DELTA
+                LOCATION '{cfg["gold_path"]}'
             """)
 

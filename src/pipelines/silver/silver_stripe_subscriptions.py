@@ -30,7 +30,6 @@ from services.watermark import read_incremental_by_watermark, upsert_watermark
 from services.dq import evaluate_dq_rules, build_dq_results_df, build_dq_failure_message, quarantine_by_business_key
 from services.delta_table import write_append_table
 from services.transformations import deduplicate_by_business_key
-from services.snapshot import merge_current_snapshot
 
 logger = logging.getLogger(__name__)
 

@@ -95,9 +95,9 @@ def _build_gold_dim_plan(silver_conform_df: DataFrame) -> DataFrame:
     )
 
 
-def run_gold_dim_plan(spark: SparkSession, env: EnvConfig) -> None:
-    pipeline_name = "gold_dim_plan"
-    dataset = "dim_plan"
+def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
+    pipeline_name = "gold_dim_plan_catalog"
+    dataset = "dim_plan_catalog"
     run_id = uuid.uuid4().hex
 
     cfg = _build_config(env)

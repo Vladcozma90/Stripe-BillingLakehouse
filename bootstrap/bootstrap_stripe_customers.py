@@ -7,17 +7,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "bronze_table": f"{env.catalog}.{env.project}_bronze.b_stripe_customers",
         "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_stripe_customers",
         "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_stripe_customers",
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_customers",
         "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_stripe_customers",
-
-        "bronze_path": f"{env.raw_base_path}/{env.project}/stripe_customers",
-        "silver_dq_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_dq_stripe_customers",
-        "silver_quarantine_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_quarantine_stripe_customers",
-        "silver_current_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_current_stripe_customers",
-        "silver_conform_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_conform_stripe_customers",
+        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_stripe_customers",
+        
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_stripe_customers/s_dq_stripe_customers",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_stripe_customers/s_quarantine_stripe_customers",
+        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_stripe_customers/s_conform_stripe_customers",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_dim_stripe_customers"
     }
 
 
@@ -73,32 +71,6 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
                 LOCATION '{cfg["silver_quarantine_path"]}'
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_quarantine_table"]}")
-
-
-    spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["silver_current_table"]} (
-                stripe_customer_id STRING,
-                email STRING,
-                currency STRING,
-                description STRING,
-                order_id STRING,
-                address STRING,
-                customer_created_ts TIMESTAMP,
-                is_delinquent BOOLEAN,
-                livemode BOOLEAN,
-                api_extracted_ts TIMESTAMP,
-                _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
-                _file_name STRING,
-                _source_format STRING,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE
-                )
-                USING DELTA
-                LOCATION '{cfg["silver_current_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["silver_current_table"]}")
 
     
     spark.sql(f"""

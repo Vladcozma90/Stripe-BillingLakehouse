@@ -112,9 +112,9 @@ def _build_gold_dim_subscription(silver_conform_df: DataFrame) -> DataFrame:
     )
 
 
-def run_gold_dim_subscription(spark: SparkSession, env: EnvConfig) -> None:
-    pipeline_name = "gold_dim_subscription"
-    dataset = "dim_subscription"
+def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
+    pipeline_name = "gold_dim_subscriptions"
+    dataset = "dim_subscriptions"
     run_id = uuid.uuid4().hex
 
     cfg = _build_config(env)

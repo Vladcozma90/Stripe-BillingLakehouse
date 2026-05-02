@@ -1,26 +1,18 @@
 from __future__ import annotations
-import os
 import logging
-import argparse
+import os
 from pyspark.sql import SparkSession
-
+from src.pipelines.gold.gold_dim_stripe_customers import run_gold_dim_customers
 from src.services.envs import load_envs
 from src.services.logger import setup_log
-from pipelines.bronze.bronze_ingestion import ingest_bronze
 
 
 logger = logging.getLogger(__name__)
 
-def _get_job_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", required=True)
-    return parser.parse_args()
-
-def job_run_bronze() -> None:
-    args = _get_job_args()
-    pipeline_name = f"bronze_ingest_{args.dataset}"
+def job_run_gold_dim_stripe_customers() -> None:
+    pipeline_name = "gold_dim_stripe_customers"
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-
+    
     setup_log(log_level)
     env = load_envs()
 
@@ -29,7 +21,7 @@ def job_run_bronze() -> None:
     spark = SparkSession.builder.appName(pipeline_name).getOrCreate()
 
     try:
-        ingest_bronze(spark, env, args.dataset)
+        run_gold_dim_customers(spark=spark, env=env)
         logger.info("Job success | pipeline_name=%s", pipeline_name)
 
     except Exception:
@@ -38,7 +30,8 @@ def job_run_bronze() -> None:
 
     finally:
         spark.stop()
-        logger.info("spark session stopped | pipeline_name=%s", pipeline_name)
+        logger.info("Spark session stopped | pipeline_name=%s", pipeline_name)
 
 if __name__ == '__main__':
-    job_run_bronze()
+    job_run_gold_dim_stripe_customers()
+    

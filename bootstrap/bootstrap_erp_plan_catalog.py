@@ -6,17 +6,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "bronze_table": f"{env.catalog}.{env.project}_bronze.b_erp_plan_catalog",
         "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_plan_catalog",
         "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_plan_catalog",
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_erp_plan_catalog",
         "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_plan_catalog",
+        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_plan_catalog",
 
-        "bronze_path": f"{env.raw_base_path}/{env.project}/b_erp_plan_catalog",
-        "silver_dq_path": f"{env.curated_base_path}/{env.project}/s_erp_plan_catalog/s_dq_erp_plan_catalog",
-        "silver_quarantine_path": f"{env.curated_base_path}/{env.project}/s_erp_plan_catalog/s_quarantine_erp_plan_catalog",
-        "silver_current_path": f"{env.curated_base_path}/{env.project}/s_erp_plan_catalog/s_current_erp_plan_catalog",
-        "silver_conform_path": f"{env.curated_base_path}/{env.project}/s_erp_plan_catalog/s_conform_erp_plan_catalog",
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_plan_catalog/s_dq_erp_plan_catalog",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_plan_catalog/s_quarantine_erp_plan_catalog",
+        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_plan_catalog/s_conform_erp_plan_catalog",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_dim_plan_catalog",
     }
 
 
@@ -77,32 +75,6 @@ def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
 
 
     spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["silver_current_table"]} (
-                plan_code STRING,
-                plan_name STRING,
-                monthly_price_usd INTEGER,
-                seats_included INTEGER,
-                max_units_per_month BIGINT,
-                currency STRING,
-                billing_period STRING,
-                effective_from DATE,
-                effective_to DATE,
-                source_is_current BOOLEAN,
-                price_version STRING,
-                etl_run_id STRING,
-                silver_processed_ts TIMESTAMP,
-                silver_processed_date DATE,
-                _file_name STRING,
-                _source STRING,
-                _landing_format STRING
-                )
-                USING DELTA
-                LOCATION '{cfg["silver_current_path"]}'
-            """)
-    logger.info("Ensure table exists: %s", f"{cfg["silver_current_table"]}")
-
-
-    spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
                     plan_catalog_sk BIGINT GENERATED ALWAYS AS IDENTITY,
                     plan_code STRING,
@@ -130,3 +102,31 @@ def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
                 LOCATION '{cfg["silver_conform_path"]}'
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_conform_table"]}")
+
+
+    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_gold")
+
+    spark.sql(f"""
+                CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (
+                plan_catalog_sk BIGINT,
+                plan_code STRING,
+                plan_name STRING,
+                monthly_price_usd BIGINT,
+                seats_included BIGINT,
+                max_units_per_month BIGINT,
+                currency STRING,
+                billing_period STRING,
+                effective_from DATE,
+                effective_to DATE,
+                source_is_current BOOLEAN,
+                price_version STRING,
+                silver_effective_start_ts TIMESTAMP,
+                silver_effective_end_ts TIMESTAMP,
+                is_current BOOLEAN,
+                gold_loaded_ts TIMESTAMP,
+                gold_loaded_date DATE,
+                etl_run_id STRING
+                )
+                USING DELTA
+                LOCATION '{cfg["gold_path"]}'
+            """)

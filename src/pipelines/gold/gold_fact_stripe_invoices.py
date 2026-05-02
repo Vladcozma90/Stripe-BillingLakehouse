@@ -227,9 +227,9 @@ def _build_stage_gold_fact_invoices(
     )
 
 
-def run_gold_fact_invoice(spark: SparkSession, env: EnvConfig) -> None:
-    pipeline_name = "gold_fact_stripe_invoice"
-    dataset = "fact_stripe_invoice"
+def run_gold_fact_invoices(spark: SparkSession, env: EnvConfig) -> None:
+    pipeline_name = "gold_fact_stripe_invoices"
+    dataset = "fact_stripe_invoices"
     run_id = uuid.uuid4().hex
 
     cfg = _build_config(env=env)
