@@ -17,6 +17,7 @@ class EnvConfig:
     checkpoint_base_path: str
     api_sources: dict[str, Any]
     datasets: dict[str, Any]
+    key_vault_url: str
 
 
 def _require_str(value: Any, name: str) -> str:
@@ -65,13 +66,15 @@ def load_envs() -> EnvConfig:
     env = os.getenv("ENV", "dev").strip().lower()
 
     cfg_base = Path(os.getenv("APP_CONFIG_DIR", "/opt/airflow/app/configs"))
-    cfg_path = cfg_base + "/" + f"{env}.yaml"
+    cfg_path = cfg_base / f"{env}.yaml"
 
     if not cfg_path.exists():
         raise FileNotFoundError(f"Config file not found: {cfg_path}")
 
     with cfg_path.open("r", encoding="utf-8") as f:
         cfg: dict[str, Any] = yaml.safe_load(f) or {}
+
+
 
     paths = _require_dict(cfg.get("paths", {}), "paths")
     api_sources = _require_dict(cfg.get("api_sources", {}), "api_sources")
@@ -88,5 +91,6 @@ def load_envs() -> EnvConfig:
         ops_base_path=_require_str(paths.get("ops_base_path"), "ops_base_path"),
         checkpoint_base_path=_require_str(paths.get("checkpoint_base_path"), "paths.checkpoint_base_path"),
         api_sources=api_sources,
-        datasets=_require_dict(cfg.get("datasets"), "datasets")
+        datasets=_require_dict(cfg.get("datasets", {}), "datasets"),
+        key_vault_url=_require_str(cfg.get("key_vault_url"), "key_vault_url"),
     )

@@ -7,6 +7,7 @@ from typing import Any
 from src.services.envs import load_envs
 from src.services.logger import setup_log
 from src.connectors.rest import extract_stripe_list_to_landing, StripeCursorSpec
+from src.services.secrets import get_kv_secret
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,10 @@ def run_extract_rest_to_landing() -> None:
     args = _get_job_args()
 
     dataset = args.dataset
-    token = dbutils.secrets.get(scope="kv-prod", key="stripe-api-token")
+    token = get_kv_secret(
+        secret_name=env.api_sources["stripe"]["secret_name"],
+        key_vault_url=env.azure["key_vault_url"]
+    )
 
     cfg = _get_stripe_cfg(env.api_sources, dataset)
     base_url = cfg["base_url"]

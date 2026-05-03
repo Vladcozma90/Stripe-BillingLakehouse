@@ -1,19 +1,23 @@
-catalog: prod_commerce
+catalog: dev_commerce
 
 project: billinglakehouse
 
 paths:
   landing_base_path: "abfss://billinglakehouse-prod-source@databricksendtoendtest.dfs.core.windows.net"
-  bronze_base_path: "abfss://billinglakehouse-prod-bronze@databricksendtoendtest.dfs.core.windows.net"
-  silver_base_path: "abfss://billinglakehouse-prod-silver@databricksendtoendtest.dfs.core.windows.net"
-  gold_base_path: "abfss://billinglakehouse-prod-gold@databricksendtoendtest.dfs.core.windows.net"
-  ops_base_path: "abfss://billinglakehouse-prod-ops@databricksendtoendtest.dfs.core.windows.net"
-  checkpoint_base_path: "abfss://billinglakehouse-prod-checkpoint@databricksendtoendtest.dfs.core.windows.net"
+  bronze_base_path: "abfss://billinglakehouse-dev-bronze@databricksendtoendtest.dfs.core.windows.net"
+  silver_base_path: "abfss://billinglakehouse-dev-silver@databricksendtoendtest.dfs.core.windows.net"
+  gold_base_path: "abfss://billinglakehouse-dev-gold@databricksendtoendtest.dfs.core.windows.net"
+  ops_base_path: "abfss://billinglakehouse-dev-ops@databricksendtoendtest.dfs.core.windows.net"
+  checkpoint_base_path: "abfss://billinglakehouse-dev-checkpoint@databricksendtoendtest.dfs.core.windows.net"
+
+azure:
+  key_vault_url: "https://your-dev-keyvault.vault.azure.net/"
 
 
 api_sources:
   stripe:
     base_url: "https://api.stripe.com/v1"
+    secret_name: "stripe-api-token-dev"
     datasets:
       stripe_customers:
         endpoint: "customers"

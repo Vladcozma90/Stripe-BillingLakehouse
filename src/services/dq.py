@@ -98,7 +98,7 @@ def evaluate_dq_rules(
         overall_result = "OK"
 
         for column_name, column_rules in rules.items():
-            severity = column_rules["severity"] if "severity" else "error"
+            severity = column_rules.get("severity", "error").upper()
             severity = severity.upper()
 
             if "max_null" in column_rules:
@@ -108,7 +108,7 @@ def evaluate_dq_rules(
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result == "FAIL"
+                    overall_result = "FAIL"
                 
                 rule_results.append(
                     {
@@ -129,7 +129,7 @@ def evaluate_dq_rules(
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result == "FAIL"
+                    overall_result = "FAIL"
                 
                 rule_results.append(
                     {
@@ -143,19 +143,19 @@ def evaluate_dq_rules(
                     }
                 )
             
-            if "accepted_value" in column_rules:
+            if "accepted_values" in column_rules:
                 fail_count = int(agg_row[f"{column_name}__accepted_values_fail_count"])
                 actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = float(column_rules["accepted_value"])
-                dq_result == "FAIL" if actual_value > threshold_value else "OK"
+                threshold_value = float(column_rules["accepted_values"])
+                dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
-                if dq_result == "FAIL" and "severity" == "ERROR":
-                    overall_result == "FAIL"
+                if dq_result == "FAIL" and severity == "ERROR":
+                    overall_result = "FAIL"
                 
                 rule_results.append(
                     {
                         "column_name": column_name,
-                        "rule_name": "accepted_value",
+                        "rule_name": "accepted_values",
                         "acutal_value": float(actual_value),
                         "threshold_value": threshold_value,
                         "failed_rows": fail_count,
@@ -174,7 +174,7 @@ def evaluate_dq_rules(
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result == "FAIL"
+                    overall_result = "FAIL"
                 
                 rule_results.append(
                     {
@@ -213,10 +213,10 @@ def evaluate_dq_rules(
                 fail_count = int(agg_row[f"{column_name}__valid_timestamp_fail_count"])
                 actual_value = int(fail_count / total_rows) if total_rows else 0.0
                 threshold_value = 0.0
-                dq_result == "FAIL" if actual_value > threshold_value else "OK"
+                dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result == "FAIL"
+                    overall_result = "FAIL"
 
                 rule_results.append(
                     {

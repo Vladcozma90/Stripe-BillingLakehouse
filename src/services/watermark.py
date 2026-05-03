@@ -52,19 +52,19 @@ def upsert_watermark(
 ) -> None:
     wm_to_log = new_wm.isoformat(sep=" ")
     spark.sql(f"""
-                MERGE INTO '{state_table}' t
+                MERGE INTO {state_table} t
                 USING (
                     SELECT 
                     '{pipeline_name}' AS pipeline_name,
                     '{dataset}' AS dataset,
                     TIMESTAMP '{wm_to_log}' AS last_watermark_ts,
-                    '{run_id}' = updated_by_run_id
+                    '{run_id}' AS updated_by_run_id
                 ) s
                 ON t.pipeline_name = s.pipeline_name AND t.dataset = s.dataset
                 WHEN MATCHED UPDATE SET
                     t.last_watermark_ts = s.last_watermark_ts,
                     t.updated_by_run_id = s.updated_by_run_id,
                     t.updated_at = current_timestamp(),
-                WHEN NOT MATCHED INSET (pipeline_name, dataset, last_watermark_ts, updated_by_run_id, updated_at)
+                WHEN NOT MATCHED THEN INSERT (pipeline_name, dataset, last_watermark_ts, updated_by_run_id, updated_at)
                 VALUES (s.pipeline_name, s.dataset, s.last_watermark_ts, s.updated_by_run_id, current_timestamp())
             """)

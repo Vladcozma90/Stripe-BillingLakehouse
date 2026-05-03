@@ -10,10 +10,14 @@ paths:
   ops_base_path: "abfss://billinglakehouse-dev-ops@databricksendtoendtest.dfs.core.windows.net"
   checkpoint_base_path: "abfss://billinglakehouse-dev-checkpoint@databricksendtoendtest.dfs.core.windows.net"
 
+azure:
+  key_vault_url: "https://your-dev-keyvault.vault.azure.net/"
+
 
 api_sources:
   stripe:
     base_url: "https://api.stripe.com/v1"
+    secret_name: "stripe-api-token-dev"
     datasets:
       stripe_customers:
         endpoint: "customers"

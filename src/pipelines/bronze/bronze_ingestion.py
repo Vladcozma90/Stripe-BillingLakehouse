@@ -4,7 +4,7 @@ import logging
 from typing import Any
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import current_timestamp, current_date, input_file_name, lit
-from services.audit import insert_run_log_start, update_run_log_success, update_run_log_failure
+from src.services.audit import insert_run_log_start, update_run_log_success, update_run_log_failure
 
 from src.services.envs import EnvConfig
 

@@ -4,3 +4,29 @@ logs/
 config/
 .venv
 dags/
+# Python build artifacts
+*.egg-info/
+dist/
+build/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment files (uv and virtualenvs)
+.venv/
+.env
+
+# Databricks / IDE specific
+.databricks/
+.idea/
+.vscode/

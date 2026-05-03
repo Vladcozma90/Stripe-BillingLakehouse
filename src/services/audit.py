@@ -1,5 +1,12 @@
 from datetime import datetime
 
+def _sql_timestamp_or_null(value):
+    if value is None:
+        return "NULL"
+    
+    return f"TIMESTAMP '{value.isoformat(sep=' ', timespec='seconds')}'"
+
+
 def insert_run_log_start(
     spark,
     run_logs_table: str,
@@ -48,7 +55,7 @@ def update_run_log_success(
             rows_in = {rows_in},
             rows_out = {rows_out},
             rows_quarantined = {rows_quarantined},
-            last_watermark_ts = TIMESTAMP '{last_watermark_ts.isoformat(sep=" ")}'
+            last_watermark_ts = {_sql_timestamp_or_null(last_watermark_ts)}
         WHERE pipeline_name = '{pipeline_name}'
           AND dataset = '{dataset}'
           AND run_id = '{run_id}'
@@ -71,7 +78,7 @@ def update_run_log_no_new_data(
             rows_in = 0,
             rows_out = 0,
             rows_quarantined = 0,
-            last_watermark_ts = TIMESTAMP '{last_watermark_ts.isoformat(sep=" ")}'
+            last_watermark_ts = {_sql_timestamp_or_null(last_watermark_ts)}
         WHERE pipeline_name = '{pipeline_name}'
           AND dataset = '{dataset}'
           AND run_id = '{run_id}'
@@ -103,7 +110,7 @@ def update_run_log_failure(
             rows_out = {rows_out},
             rows_quarantined = {rows_quarantined},
             dq_result = '{dq_result}',
-            last_watermark_ts = TIMESTAMP '{wm_to_log.isoformat(sep=" ")}'
+            last_watermark_ts = {_sql_timestamp_or_null(wm_to_log)}
         WHERE pipeline_name = '{pipeline_name}'
           AND dataset = '{dataset}'
           AND run_id = '{run_id}'
