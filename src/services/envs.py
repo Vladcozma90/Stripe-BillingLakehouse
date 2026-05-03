@@ -17,7 +17,7 @@ class EnvConfig:
     checkpoint_base_path: str
     api_sources: dict[str, Any]
     datasets: dict[str, Any]
-    key_vault_url: str
+    azure: dict[str, Any]
 
 
 def _require_str(value: Any, name: str) -> str:
@@ -92,5 +92,5 @@ def load_envs() -> EnvConfig:
         checkpoint_base_path=_require_str(paths.get("checkpoint_base_path"), "paths.checkpoint_base_path"),
         api_sources=api_sources,
         datasets=_require_dict(cfg.get("datasets", {}), "datasets"),
-        key_vault_url=_require_str(cfg.get("key_vault_url"), "key_vault_url"),
+        azure=_require_dict(cfg.get("azure", {}), "azure")
     )
