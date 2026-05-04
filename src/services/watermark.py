@@ -61,7 +61,7 @@ def upsert_watermark(
                     '{run_id}' AS updated_by_run_id
                 ) s
                 ON t.pipeline_name = s.pipeline_name AND t.dataset = s.dataset
-                WHEN MATCHED UPDATE SET
+                WHEN MATCHED THEN UPDATE SET
                     t.last_watermark_ts = s.last_watermark_ts,
                     t.updated_by_run_id = s.updated_by_run_id,
                     t.updated_at = current_timestamp(),

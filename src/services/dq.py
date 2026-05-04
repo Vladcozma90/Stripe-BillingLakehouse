@@ -99,7 +99,6 @@ def evaluate_dq_rules(
 
         for column_name, column_rules in rules.items():
             severity = column_rules.get("severity", "error").upper()
-            severity = severity.upper()
 
             if "max_null" in column_rules:
                 null_count = int(agg_row[f"{column_name}__null_count"])
@@ -146,7 +145,7 @@ def evaluate_dq_rules(
             if "accepted_values" in column_rules:
                 fail_count = int(agg_row[f"{column_name}__accepted_values_fail_count"])
                 actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = float(column_rules["accepted_values"])
+                threshold_value = 0.0
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
@@ -170,7 +169,7 @@ def evaluate_dq_rules(
                 non_null_rows = total_rows - null_count_for_unique
                 duplicate_count = max(non_null_rows - distinct_count, 0)
                 actual_value = int(duplicate_count / total_rows) if total_rows else 0.0
-                threshold_value = float(column_rules["unique"])
+                threshold_value = 0.0
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
@@ -211,7 +210,7 @@ def evaluate_dq_rules(
 
             if "valid_timestamp" in column_rules and column_rules["valid_timestamp"]:
                 fail_count = int(agg_row[f"{column_name}__valid_timestamp_fail_count"])
-                actual_value = int(fail_count / total_rows) if total_rows else 0.0
+                actual_value = (fail_count / total_rows) if total_rows else 0.0
                 threshold_value = 0.0
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 

@@ -17,16 +17,25 @@ def _get_job_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]:
+def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, str]:
     stripe = api_sources["stripe"]
     base_url = stripe["base_url"]
     datasets = stripe["datasets"]
-    endpoint = datasets[dataset]["endpoint"]
 
     if dataset not in datasets:
-        raise ValueError(f"Unknown Stripe REST dataset '{dataset}'. Available: {list(datasets.keys())}")
+        raise ValueError(
+            f"Unknown Stripe REST dataset '{dataset}'. "
+            f"Available: {list(datasets.keys())}"
+        )
     
-    return {"base_url": base_url, "endpoint": endpoint}
+    endpoint = datasets[dataset]["endpoint"]
+
+    return {
+        "base_url": base_url,
+        "endpoint": endpoint,
+    }
+
+
 
 def run_extract_rest_to_landing() -> None:
     env = load_envs()
