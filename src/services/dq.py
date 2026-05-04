@@ -282,11 +282,16 @@ def build_dq_failure_message(metrics: dict[str, Any]) -> str:
     failed_rules = [r for r in metrics["rule_results"] if r["dq_result"] == "FAIL"]
 
     if not failed_rules:
-        return "DQ FAIL"
-    
+        return "DQ_FAIL"
+
     parts = [
-        f"{r["column_name"]}:{r["rule_name"]} actual={r["actual_value"]:.4f}"
-        f"threshold={r["threshold_value"]:.4f} failed_rows={r["failed_rows"]:.4f} severity={r["severity"]}"
+        (
+            f"{r['column_name']}:{r['column_rule']} "
+            f"actual_value={r['actual_value']:.4f} "
+            f"threshold_value={r['threshold_value']:.4f}"
+            f"failed_rows={r['failed_rows']} "
+            f"severity={r['severity']}"
+        )
         for r in failed_rules
     ]
 
