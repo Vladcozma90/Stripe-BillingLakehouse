@@ -124,7 +124,7 @@ def evaluate_dq_rules(
             if "min_value" in column_rules:
                 fail_count = int(agg_row[f"{column_name}__min_value_fail_count"])
                 actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = float(column_rules["min_value"])
+                threshold_value = 0.0
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
                 if dq_result == "FAIL" and severity == "ERROR":
