@@ -286,7 +286,7 @@ def build_dq_failure_message(metrics: dict[str, Any]) -> str:
 
     parts = [
         (
-            f"{r['column_name']}:{r['column_rule']} "
+            f"{r['column_name']}:{r['rule_name']} "
             f"actual_value={r['actual_value']:.4f} "
             f"threshold_value={r['threshold_value']:.4f}"
             f"failed_rows={r['failed_rows']} "
