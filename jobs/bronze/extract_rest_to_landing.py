@@ -17,7 +17,7 @@ def _get_job_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, str]:
+def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]:
     stripe = api_sources["stripe"]
     base_url = stripe["base_url"]
     datasets = stripe["datasets"]

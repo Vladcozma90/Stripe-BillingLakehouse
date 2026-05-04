@@ -155,7 +155,7 @@ def evaluate_dq_rules(
                     {
                         "column_name": column_name,
                         "rule_name": "accepted_values",
-                        "acutal_value": float(actual_value),
+                        "actual_value": float(actual_value),
                         "threshold_value": threshold_value,
                         "failed_rows": fail_count,
                         "severity": severity,
@@ -168,7 +168,7 @@ def evaluate_dq_rules(
                 null_count_for_unique = int(agg_row[f"{column_name}__null_count_for_unique"])
                 non_null_rows = total_rows - null_count_for_unique
                 duplicate_count = max(non_null_rows - distinct_count, 0)
-                actual_value = int(duplicate_count / total_rows) if total_rows else 0.0
+                actual_value = (duplicate_count / total_rows) if total_rows else 0.0
                 threshold_value = 0.0
                 dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
@@ -221,7 +221,7 @@ def evaluate_dq_rules(
                     {
                         "column_name": column_name,
                         "rule_name": "valid_timestamp",
-                        "acutal_value": float(actual_value),
+                        "actual_value": float(actual_value),
                         "threshold_value": threshold_value,
                         "failed_rows": fail_count,
                         "severity": severity,
@@ -250,7 +250,7 @@ def build_dq_results_df(
         int(metrics["total_rows"]),
         rule_result["column_name"],
         rule_result["rule_name"],
-        float(rule_result["acutal_value"]),
+        float(rule_result["actual_value"]),
         float(rule_result["threshold_value"]),
         int(rule_result["failed_rows"]),  
         rule_result["severity"],
@@ -268,7 +268,7 @@ def build_dq_results_df(
         total_rows BIGINT,
         column_name STRING,
         rule_name STRING,
-        acutal_value DOUBLE,
+        actual_value DOUBLE,
         threshold_value DOUBLE,
         failed_rows BIGINT,
         severity STRING,

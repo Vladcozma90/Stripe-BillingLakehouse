@@ -1,5 +1,3 @@
-from datetime import datetime
-
 def _sql_timestamp_or_null(value):
     if value is None:
         return "NULL"
@@ -99,8 +97,6 @@ def update_run_log_failure(
     last_watermark_ts,
 ) -> None:
     safe_msg = str(error_msg).replace("'", "''")
-    wm_to_log = last_watermark_ts if last_watermark_ts is not None else datetime(1900, 1, 1)
-
     spark.sql(f"""
         UPDATE {run_logs_table}
         SET finished_at = current_timestamp(),
@@ -110,7 +106,7 @@ def update_run_log_failure(
             rows_out = {rows_out},
             rows_quarantined = {rows_quarantined},
             dq_result = '{dq_result}',
-            last_watermark_ts = {_sql_timestamp_or_null(wm_to_log)}
+            last_watermark_ts = {_sql_timestamp_or_null(last_watermark_ts)}
         WHERE pipeline_name = '{pipeline_name}'
           AND dataset = '{dataset}'
           AND run_id = '{run_id}'
