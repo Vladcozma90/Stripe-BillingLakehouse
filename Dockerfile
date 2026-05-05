@@ -5,6 +5,6 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY . /opt/airflow/app
 WORKDIR /opt/airflow/app
 
-RUN uv pip install .
+RUN uv pip install --system .
 
 USER airflow

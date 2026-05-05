@@ -38,58 +38,64 @@ def _get_stripe_cfg(api_sources: dict[str, Any], dataset: str) -> dict[str, Any]
 
 
 def run_extract_rest_to_landing() -> None:
-    env = load_envs()
-    setup_log(os.getenv("LOG_LEVEL", "INFO").upper())
     args = _get_job_args()
-
-    dataset = args.dataset
-    token = get_kv_secret(
-        secret_name=env.api_sources["stripe"]["secret_name"],
-        key_vault_url=env.azure["key_vault_url"]
-    )
-
-    cfg = _get_stripe_cfg(env.api_sources, dataset)
-    base_url = cfg["base_url"]
-    endpoint = cfg["endpoint"]
-
-    extract_date = os.getenv("EXTRACT_DATE", date.today().isoformat())
-
-    landing_dir = os.path.join(
-        env.landing_base_path,
-        env.project,
-        dataset,
-        f"extract_date={extract_date}",
-    )
-
-    page_size = int(os.getenv("PAGE_SIZE", str(StripeCursorSpec().page_size)))
-
-    logger.info("Starting Stripe extract | ENV=%s | dataset=%s | endpoint=%s | landing_dir=%s",
-                os.getenv("ENV", "dev"),
-                dataset,
-                endpoint,
-                landing_dir
-                )
+    pipeline_name = f"API_extract_{args.dataset}"
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     
-    manifest = extract_stripe_list_to_landing(
-        base_url=base_url,
-        endpoint=endpoint,
-        landing_dir=landing_dir,
-        token=token,
-        spec=StripeCursorSpec(page_size=page_size)
-    )
+    setup_log(log_level)
+    env = load_envs()
 
-    logger.info(
-        "Stripe extract finished | dataset=%s | records=%s | pages=%s",
-        dataset,
-        manifest.get("records"),
-        manifest.get("pages"),
-    )
+    logger.info("Job start | pipeline_name=%s", pipeline_name)
 
-    if __name__ == "__main__":
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-        except Exception:
-            pass
+    try:
+        token = get_kv_secret(
+            secret_name=env.api_sources["stripe"]["secret_name"],
+            key_vault_url=env.azure["key_vault_url"]
+        )
 
-        run_extract_rest_to_landing()
+        cfg = _get_stripe_cfg(env.api_sources, args.dataset)
+        base_url = cfg["base_url"]
+        endpoint = cfg["endpoint"]
+
+        extract_date = os.getenv("EXTRACT_DATE", date.today().isoformat())
+
+        landing_dir = os.path.join(
+            env.landing_base_path,
+            env.project,
+            args.dataset,
+            f"extract_date={extract_date}",
+        )
+
+        page_size = int(os.getenv("PAGE_SIZE", str(StripeCursorSpec().page_size)))
+
+        logger.info("Starting Stripe extract | ENV=%s | dataset=%s | endpoint=%s | landing_dir=%s",
+                    os.getenv("ENV", "dev"),
+                    args.dataset,
+                    endpoint,
+                    landing_dir
+                    )
+    
+        manifest = extract_stripe_list_to_landing(
+            base_url=base_url,
+            endpoint=endpoint,
+            landing_dir=landing_dir,
+            token=token,
+            spec=StripeCursorSpec(page_size=page_size)
+        )
+
+        logger.info(
+            "Stripe extract finished | dataset=%s | records=%s | pages=%s",
+            args.dataset,
+            manifest.get("records"),
+            manifest.get("pages"),
+        )
+
+    except Exception:
+        logger.exception("Job failed | pipeline_name=%s", pipeline_name)
+        raise
+
+if __name__ == "__main__":
+    run_extract_rest_to_landing()
+
+
+    

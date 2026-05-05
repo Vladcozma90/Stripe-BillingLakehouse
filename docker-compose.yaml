@@ -74,6 +74,17 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     # The following line can be used to set a custom config file, stored in the local config folder
     AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
+
+    # Project runtime config
+    PROJECT_ROOT: /opt/airflow/app
+    ENV: ${ENV:-dev}
+    LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    DRY_RUN: ${DRY_RUN:-true}
+    DATABRICKS_CONN_ID: ${DATABRICKS_CONN_ID:-databricks_default}
+    DATABRICKS_BRONZE_JOB_ID: ${DATABRICKS_BRONZE_JOB_ID:-0}
+    DATABRICKS_SILVER_JOB_ID: ${DATABRICKS_SILVER_JOB_ID:-0}
+    DATABRICKS_GOLD_JOB_ID: ${DATABRICKS_GOLD_JOB_ID:-0}
+    DATABRICKS_BOOTSTRAP_JOB_ID: ${DATABRICKS_BOOTSTRAP_JOB_ID:-0}
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
