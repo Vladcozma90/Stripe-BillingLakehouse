@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import logging
 from pyspark.sql import SparkSession
-from src.pipelines.silver.silver_stripe_subscriptions import run_silver_stripe_subscriptions
+from pipelines.silver.silver_stripe_subscriptions import run_silver_stripe_subscriptions
 from src.services.logger import setup_log
 from src.services.envs import load_envs
 
