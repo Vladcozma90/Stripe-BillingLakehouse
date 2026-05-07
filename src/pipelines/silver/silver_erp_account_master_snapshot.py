@@ -431,8 +431,6 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         # dq
-        dq_source = "stage_erp_account_master_snapshot"
-
 
         dq_rules = env.datasets["erp_account_master_snapshot"]["data_quality"]["rules"]
         dq_metrics = evaluate_dq_rules(df=stage_df, rules=dq_rules)
@@ -440,7 +438,7 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
 
         dq_df = build_dq_results_df(
             spark=spark,
-            dq_source=dq_source,
+            dq_source="stage_erp_account_master_snapshot",
             run_id=run_id,
             metrics=dq_metrics
         )

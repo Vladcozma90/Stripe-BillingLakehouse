@@ -160,7 +160,6 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
 
         # dq
-        dq_source_table = "stage_silver_erp_usage_daily"
 
         dq_rules = env.datasets["erp_usage_daily"]["data_quality"]["rules"]
         dq_metrics = evaluate_dq_rules(df=stage_df, rules=dq_rules)
@@ -168,7 +167,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
         dq_df = build_dq_results_df(
             spark=spark,
-            dq_source=dq_source_table,
+            dq_source="stage_silver_erp_usage_daily",
             run_id=run_id,
             metrics=dq_metrics
         )

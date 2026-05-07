@@ -33,4 +33,4 @@ __pycache__/
 
 
 #temporary
-tests/
+test_dags/

@@ -179,7 +179,7 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
 
         dq_df = build_dq_results_df(
             spark=spark,
-            dq_source=stage_df,
+            dq_source="stage_stripe_subscription_items",
             run_id=run_id,
             metrics=dq_metrics
         )

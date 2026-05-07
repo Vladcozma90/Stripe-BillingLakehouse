@@ -205,16 +205,16 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
         dq_metrics = evaluate_dq_rules(stage_df, dq_rules)
         dq_result = dq_metrics["overall_result"]
 
-        dq_result_df = build_dq_results_df(
+        dq_df = build_dq_results_df(
             spark=spark,
-            table_name="stage_stripe_invoices",
+            dq_source="stage_stripe_invoices",
             run_id=run_id,
             metrics=dq_metrics,
         )
 
         write_append_table(
             spark=spark,
-            df=dq_result_df,
+            df=dq_df,
             table_name=cfg["dq_table"],
             table_path=cfg["dq_path"],
         )
