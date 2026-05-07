@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_plan_catalog",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_plan",
-        "gold_path": f"{env.curated_base_path}/{env.project}/erp_plan_catalog/g_dim_plan",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_plan_catalog",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
+        
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_plan_catalog",
     }
 
 
@@ -115,7 +116,7 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
     )
 
     try:
-        logger.info("Gold dim_plan start | run_id=%s", run_id)
+        logger.info("Gold dim_plan_catalog start | run_id=%s", run_id)
 
         silver_conform_df = spark.table(cfg["silver_conform_table"])
 
@@ -171,7 +172,7 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         logger.info(
-            "Gold dim_plan SUCCESS | rows_in=%d | rows_out=%d",
+            "Gold dim_plan_catalog SUCCESS | rows_in=%d | rows_out=%d",
             rows_in,
             rows_out,
         )
@@ -190,5 +191,5 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             dq_result="ERROR",
             last_watermark_ts=None,
         )
-        logger.exception("Gold dim_plan FAILED")
+        logger.exception("Gold dim_plan_catalog FAILED")
         raise

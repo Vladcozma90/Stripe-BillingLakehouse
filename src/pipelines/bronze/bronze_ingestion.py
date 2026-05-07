@@ -12,13 +12,13 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig, dataset: str) -> dict[str, Any]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "tgt_table": f"{env.catalog}.{env.project}_bronze.{dataset}",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "tgt_table": f"{env.catalog}.{env.schemas['bronze']}.{dataset}",
         
-        "src_path": f"{env.landing_base_path}/{env.project}/{dataset}", 
-        "tgt_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/b_{dataset}",
-        "checkpoint_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.project}/bronze/{dataset}/checkpoint",
-        "schema_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.project}/bronze/{dataset}/schema",
+        "src_path": f"{env.landing_base_path}/{env.catalog}/landing_data/{dataset}",
+        "tgt_path": f"{env.bronze_base_path}/{env.catalog}/{env.schemas['bronze']}/b_{dataset}",
+        "checkpoint_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.schemas['bronze']}/bronze/{dataset}/checkpoint",
+        "schema_path": f"{env.checkpoint_base_path}/{env.catalog}/{env.schemas['bronze']}/bronze/{dataset}/schema",
     }
 
 def _get_landing_format(env: EnvConfig, dataset: str) -> str:

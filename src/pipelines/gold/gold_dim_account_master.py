@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_account_master_snapshot",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_account",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_account_master_snapshot",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_account_master",
 
-        "gold_path": f"{env.curated_base_path}/{env.project}/erp_account_master_snapshot/g_dim_account",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_account_master",
     }
 
 

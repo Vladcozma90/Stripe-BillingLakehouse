@@ -37,16 +37,16 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
-        "dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_account_master_snapshot",
-        "quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_account_master_snapshot",
-        "conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_account_master_snapshot",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "state_table": f"{env.catalog}.{env.schemas['ops']}.pipeline_state",
+        "dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_erp_account_master_snapshot",
+        "quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_erp_account_master_snapshot",
+        "conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_account_master_snapshot",
 
-        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.project}/b_erp_account_master_snapshot",
-        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
-        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
-        "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
+        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.schemas['bronze']}/b_erp_account_master_snapshot",
+        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_account_master_snapshot/s_dq_erp_account_master_snapshot",
+        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_account_master_snapshot/s_quarantine_erp_account_master_snapshot",
+        "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
     }
 
 def _get_required_columns() -> list[str]:

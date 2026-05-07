@@ -10,10 +10,11 @@ def bootstrap_schemas(spark: SparkSession, env: EnvConfig) -> None:
     spark.sql(f"USE CATALOG {env.catalog}")
 
     schemas = [
-        f"{env.project}_ops",
-        f"{env.project}_bronze",
-        f"{env.project}_silver",
-        f"{env.project}_gold",
+        f"{env.schemas['bronze']}",
+        f"{env.schemas['silver']}",
+        f"{env.schemas['gold']}",
+        f"{env.schemas['ops']}",
+        f"{env.schemas['smoke_tests']}",
     ]
 
     for s in schemas:

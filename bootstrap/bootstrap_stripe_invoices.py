@@ -9,22 +9,22 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_stripe_invoices",
-        "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_stripe_invoices",
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_invoices",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_fact_stripe_invoices",
+        "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_invoices",
+        "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_invoices",
+        "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_invoices",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_invoices",
 
-        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/stripe_invoices/s_dq_stripe_invoices",
-        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/stripe_invoices/s_quarantine_stripe_invoices",
-        "silver_current_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/stripe_invoices/s_current_stripe_invoices",
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_fact_stripe_invoices",
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_invoices/s_dq_stripe_invoices",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_invoices/s_quarantine_stripe_invoices",
+        "silver_current_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_invoices/s_current_stripe_invoices",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_stripe_invoices",
     }
 
 def bootstrap_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating stripe_subscription_items in schema %s", f"{env.catalog}.{env.project}_silver")
+    logger.info("Creating/validating stripe_invoices in schema %s", f"{env.catalog}.{env.schemas['silver']}")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
@@ -34,7 +34,7 @@ def bootstrap_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
                 total_rows BIGINT,
                 column_name STRING,
                 rule_name STRING,
-                acutal_value DOUBLE,
+                actual_value DOUBLE,
                 threshold_value DOUBLE,
                 failed_rows BIGINT,
                 severity STRING,

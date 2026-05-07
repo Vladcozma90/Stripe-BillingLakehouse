@@ -7,14 +7,14 @@ logger = logging.getLogger(__name__)
 
 def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> None:
 
-    ops_schema = f"{env.catalog}.{env.project}_ops"
+    ops_schema = f"{env.catalog}.{env.schemas['ops']}"
 
     ops = {
-        "run_logs_table" : f"{ops_schema}.run_logs",
-        "run_logs_path" : f"{env.ops_base_path}/{env.project}_ops/run_logs",
+        "run_logs_table" : f"{env.catalog}.{ops_schema}.run_logs",
+        "run_logs_path" : f"{env.ops_base_path}/{env.catalog}/{env.schemas['ops']}/run_logs",
 
-        "state_table" : f"{ops_schema}.pipeline_state",
-        "state_path" : f"{env.ops_base_path}/{env.project}_pipeline_state",
+        "state_table" : f"{env.catalog}.{ops_schema}.pipeline_state",
+        "state_path" : f"{env.ops_base_path}/{env.catalog}/{env.schemas['ops']}/pipeline_state",
     }
     logger.info("Creating/validating OPS tables in schema %s", ops_schema)
 

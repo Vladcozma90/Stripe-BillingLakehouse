@@ -9,6 +9,7 @@ import yaml
 class EnvConfig:
     catalog: str
     project: str
+    schemas: dict[str, str]
     landing_base_path: str
     bronze_base_path: str
     silver_base_path: str
@@ -76,6 +77,7 @@ def load_envs() -> EnvConfig:
 
 
 
+    schemas = _require_dict(cfg.get("schemas", {}), "schemas")
     paths = _require_dict(cfg.get("paths", {}), "paths")
     api_sources = _require_dict(cfg.get("api_sources", {}), "api_sources")
     _validate_api_sources(api_sources)
@@ -84,6 +86,7 @@ def load_envs() -> EnvConfig:
     return EnvConfig(
         catalog=_require_str(cfg.get("catalog"), "catalog"),
         project=_require_str(cfg.get("project"), "project"),
+        schemas=schemas,
         landing_base_path=_require_str(paths.get("landing_base_path"), "paths.landing_base_path"),
         bronze_base_path=_require_str(paths.get("bronze_base_path"), "paths.bronze_base_path"),
         silver_base_path=_require_str(paths.get("silver_base_path"), "paths.silver_base_path"),

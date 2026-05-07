@@ -1,9 +1,17 @@
-catalog: dev_commerce
+catalog: billinglakehouse_dev
 
 project: billinglakehouse
 
+schemas:
+  bronze: bronze
+  silver: silver
+  gold: gold
+  ops: ops
+  smoke_tests: smoke_tests
+
+
 paths:
-  landing_base_path: "abfss://billinglakehouse-prod-source@databricksendtoendtest.dfs.core.windows.net"
+  landing_base_path: "abfss://billinglakehouse-dev-source@databricksendtoendtest.dfs.core.windows.net"
   bronze_base_path: "abfss://billinglakehouse-dev-bronze@databricksendtoendtest.dfs.core.windows.net"
   silver_base_path: "abfss://billinglakehouse-dev-silver@databricksendtoendtest.dfs.core.windows.net"
   gold_base_path: "abfss://billinglakehouse-dev-gold@databricksendtoendtest.dfs.core.windows.net"

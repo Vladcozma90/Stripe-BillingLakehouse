@@ -2,7 +2,8 @@ test.py
 logs/
 .env
 config/
-.venv
+.venv/
+test_dags/
 # Python build artifacts
 *.egg-info/
 dist/
@@ -29,8 +30,3 @@ __pycache__/
 .databricks/
 .idea/
 .vscode/
-
-
-
-#temporary
-test_dags/

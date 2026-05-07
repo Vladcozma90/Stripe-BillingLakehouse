@@ -27,10 +27,11 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_stripe_customers",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_customer",
-        "gold_path": f"{env.curated_base_path}/{env.project}/stripe_customers/g_dim_customer",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_customers",
+
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_stripe_customers"
     }
 
 
@@ -54,7 +55,7 @@ def _get_required_columns() -> list[str]:
     ]
 
 
-def _build_gold_dim_customer(silver_conform_df: DataFrame) -> DataFrame:
+def _build_gold_dim_stripe_customers(silver_conform_df: DataFrame) -> DataFrame:
     return (
         silver_conform_df
         .withColumn("customer_id", trim(col("customer_id")).cast("string"))
@@ -92,7 +93,7 @@ def _build_gold_dim_customer(silver_conform_df: DataFrame) -> DataFrame:
     )
 
 
-def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
+def run_gold_dim_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
     pipeline_name = "gold_dim_stripe_customers"
     dataset = "dim_stripe_customers"
     run_id = uuid.uuid4().hex
@@ -112,7 +113,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
     )
 
     try:
-        logger.info("Gold dim_customer start | run_id=%s", run_id)
+        logger.info("Gold dim_stripe_customers start | run_id=%s", run_id)
 
         silver_conform_df = spark.table(cfg["silver_conform_table"])
 
@@ -133,7 +134,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
             logger.info("No data in silver conform. Exiting.")
             return
 
-        gold_df = _build_gold_dim_customer(
+        gold_df = _build_gold_dim_stripe_customers(
             silver_conform_df=silver_conform_df,
             run_id=run_id,
         )
@@ -168,7 +169,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         logger.info(
-            "Gold dim_customer SUCCESS | rows_in=%d | rows_out=%d",
+            "Gold dim_stripe_customers SUCCESS | rows_in=%d | rows_out=%d",
             rows_in,
             rows_out,
         )
@@ -187,5 +188,5 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
             dq_result="ERROR",
             last_watermark_ts=None,
         )
-        logger.exception("Gold dim_customer FAILED")
+        logger.exception("Gold dim_stripe_customers FAILED")
         raise

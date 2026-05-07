@@ -27,15 +27,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
 
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_subscription_items",
+        "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_subscription_items",
 
-        "gold_dim_subscription_table": f"{env.catalog}.{env.project}_gold.g_dim_subscription",
-        "gold_dim_customer_table": f"{env.catalog}.{env.project}_gold.g_dim_customer",
+        "gold_dim_subscription_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_subscriptions",
+        "gold_dim_customer_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_customers",
 
-        "gold_fact_table": f"{env.catalog}.{env.project}_gold.g_fact_subscription_item",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/stripe_subscription_items/g_fact_subscription_item",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_subscription_items",
+        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_stripe_subscription_items",
     }
 
 

@@ -36,18 +36,16 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
-        "dq_table": f"{env.catalog}.{env.project}_silver.s_dq_stripe_customers",
-        "quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_stripe_customers",
-        "current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_customers",
-        "conform_table": f"{env.catalog}.{env.project}_silver.s_conform_stripe_customers",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "state_table": f"{env.catalog}.{env.schemas['ops']}.pipeline_state",
+        "dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_customers",
+        "quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_customers",
+        "conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
 
-        "bronze_path": f"{env.raw_base_path}/{env.project}/stripe_customers",
-        "dq_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_dq_stripe_customers",
-        "quarantine_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_quarantine_stripe_customers",
-        "current_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_current_stripe_customers",
-        "conform_path": f"{env.curated_base_path}/{env.project}/stripe_customers/s_conform_stripe_customers",
+        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.schemas['bronze']}/b_stripe_customers",
+        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_dq_stripe_customers",
+        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_quarantine_stripe_customers",
+        "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_conform_stripe_customers",
     }
 
 def _get_required_columns() -> list[str]:

@@ -7,15 +7,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_stripe_subscription_items",
-        "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_stripe_subscription_items",
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_subscription_items",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_fact_stripe_subscription_items",
+        "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_subscription_items",
+        "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_subscription_items",
+        "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_subscription_items",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_subscription_items",
 
-        "silver_dq_path": f"{env.silver_base_path}/{env.project}/stripe_subscription_items/s_dq_stripe_subscription_items",
-        "silver_quarantine_path": f"{env.silver_base_path}/{env.project}/stripe_subscription_items/s_quarantine_stripe_subscription_items",
-        "silver_current_path": f"{env.silver_base_path}/{env.project}/stripe_subscription_items/s_current_stripe_subscription_items",
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_fact_stripe_subscription_items",
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscription_items/s_dq_stripe_subscription_items",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscription_items/s_quarantine_stripe_subscription_items",
+        "silver_current_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscription_items/s_current_stripe_subscription_items",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_stripe_subscription_items",
     }
 
 
@@ -23,7 +23,7 @@ def bootstrap_subscription_items(spark: SparkSession, env: EnvConfig) -> None:
     
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating stripe_subscription_items in schema %s", f"{env.catalog}.{env.project}_silver")
+    logger.info("Creating/validating stripe_subscription_items in schema %s", f"{env.catalog}.{env.schemas['silver']}")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (

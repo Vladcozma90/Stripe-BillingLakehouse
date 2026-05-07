@@ -6,15 +6,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_erp_plan_catalog",
-        "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_erp_plan_catalog",
-        "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_erp_plan_catalog",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_plan_catalog",
+        "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_erp_plan_catalog",
+        "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_erp_plan_catalog",
+        "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_plan_catalog",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
-        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_plan_catalog/s_dq_erp_plan_catalog",
-        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_plan_catalog/s_quarantine_erp_plan_catalog",
-        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_erp_plan_catalog/s_conform_erp_plan_catalog",
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_dim_plan_catalog",
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_plan_catalog/s_dq_erp_plan_catalog",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_plan_catalog/s_quarantine_erp_plan_catalog",
+        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_plan_catalog/s_conform_erp_plan_catalog",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_plan_catalog",
     }
 
 
@@ -22,7 +22,7 @@ def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
     
-    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_silver")
+    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.schemas['silver']}")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (
@@ -104,7 +104,7 @@ def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
     logger.info("Ensure table exists: %s", f"{cfg["silver_conform_table"]}")
 
 
-    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.project}_gold")
+    logger.info("Creating/validating erp_plan_catalog in schema %s", f"{env.catalog}.{env.schemas['gold']}")
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (

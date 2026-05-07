@@ -35,18 +35,16 @@ logger = logging.getLogger(__name__)
 
 def _build_config(spark: SparkSession, env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
-        "state_table": f"{env.catalog}.{env.project}_ops.pipeline_state",
-        "dq_table": f"{env.catalog}.{env.project}_silver.s_dq_stripe_subscriptions",
-        "quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_stripe_subscriptions",
-        "current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_subscriptions",
-        "conform_table": f"{env.catalog}.{env.project}_silver.s_conform_stripe_subscriptions",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
+        "state_table": f"{env.catalog}.{env.schemas['ops']}.pipeline_state",
+        "dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_subscriptions",
+        "quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_subscriptions",
+        "conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_subscriptions",
 
-        "bronze_path": f"{env.catalog}/{env.project}/b_stripe_subscriptions",
-        "dq_path": f"{env.catalog}/{env.project}/stripe_subscriptions/s_dq_stripe_subscriptions",
-        "quarantine_path": f"{env.catalog}/{env.project}/stripe_subscriptions/s_quarantine_stripe_subscriptions",
-        "current_path": f"{env.catalog}/{env.project}/stripe_subscriptions/s_current_stripe_subscriptions",
-        "conform_path": f"{env.catalog}/{env.project}/stripe_subscriptions/s_conform_stripe_subscriptions",
+        "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.schemas['bronze']}/b_stripe_subscriptions",
+        "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscriptions/s_dq_stripe_subscriptions",
+        "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscriptions/s_quarantine_stripe_subscriptions",
+        "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscriptions/s_conform_stripe_subscriptions",
     }
 
 def _get_required_columns() -> list[str]:

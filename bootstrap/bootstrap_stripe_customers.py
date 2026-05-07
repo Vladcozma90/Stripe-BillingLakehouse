@@ -7,15 +7,15 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "silver_dq_table": f"{env.catalog}.{env.project}_silver.s_dq_stripe_customers",
-        "silver_quarantine_table": f"{env.catalog}.{env.project}_silver.s_quarantine_stripe_customers",
-        "silver_conform_table": f"{env.catalog}.{env.project}_silver.s_conform_stripe_customers",
-        "gold_table": f"{env.catalog}.{env.project}_gold.g_dim_stripe_customers",
-        
-        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_stripe_customers/s_dq_stripe_customers",
-        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_stripe_customers/s_quarantine_stripe_customers",
-        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.project}/s_stripe_customers/s_conform_stripe_customers",
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/g_dim_stripe_customers"
+        "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_customers",
+        "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_customers",
+        "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_customers",
+
+        "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_dq_stripe_customers",
+        "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_quarantine_stripe_customers",
+        "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_conform_stripe_customers",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_stripe_customers"
     }
 
 
@@ -23,7 +23,7 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating stripe_customers in schema %s", f"{env.catalog}.{env.project}_silver")
+    logger.info("Creating/validating stripe_customers in schema %s", f"{env.catalog}.{env.schemas['silver']}")
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_dq_table"]} (

@@ -28,17 +28,17 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "run_logs_table": f"{env.catalog}.{env.project}_ops.run_logs",
+        "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
 
-        "silver_current_table": f"{env.catalog}.{env.project}_silver.s_current_stripe_invoices",
+        "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_invoices",
 
-        "gold_dim_subscription_table": f"{env.catalog}.{env.project}_gold.g_dim_subscription",
-        "gold_dim_customer_table": f"{env.catalog}.{env.project}_gold.g_dim_customer",
-        "gold_dim_account_table": f"{env.catalog}.{env.project}_gold.g_dim_account",
-        "gold_dim_plan_table": f"{env.catalog}.{env.project}_gold.g_dim_plan",
+        "gold_dim_subscription_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_subscriptions",
+        "gold_dim_customer_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_customers",
+        "gold_dim_account_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_account_master",
+        "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
-        "gold_fact_table": f"{env.catalog}.{env.project}_gold.g_fact_invoice",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.project}/stripe_invoices/g_fact_invoice",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_invoices",
+        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_stripe_invoices",
     }
 
 def _get_required_columns() -> list[str]:
