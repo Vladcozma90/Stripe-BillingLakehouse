@@ -1,35 +1,36 @@
 from __future__ import annotations
 
+import argparse
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import current_timestamp, lit
+from pyspark.sql.functions import current_timestamp
 
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
-)
-
-logger = logging.getLogger(__name__)
+def _get_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--catalog", required=True)
+    parser.add_argument("--schema", required=True)
+    parser.add_argument("--log-level", default="INFO")
+    return parser.parse_args()
 
 
 def run_bootstrap_test() -> None:
-    """
-    Lightweight Databricks bootstrap test.
+    args = _get_args()
 
-    This does not require ADLS, Key Vault, Stripe, or external locations.
-    It validates that Databricks Jobs can run this repo and create
-    managed Unity Catalog objects.
-    """
+    logging.basicConfig(
+        level=args.log_level.upper(),
+        format="%(asctime)s %(levelname)s %(name)s:%(lineno)d %(message)s",
+    )
+
+    logger = logging.getLogger(__name__)
 
     spark = SparkSession.builder.getOrCreate()
 
-    catalog = os.getenv("DATABRICKS_TEST_CATALOG", "workspace")
-    schema = os.getenv("DATABRICKS_TEST_SCHEMA", "billinglakehouse_test")
+    catalog = args.catalog
+    schema = args.schema
 
     run_id = str(uuid.uuid4())
     started_at = datetime.now(timezone.utc).isoformat()
@@ -57,19 +58,9 @@ def run_bootstrap_test() -> None:
     df = spark.createDataFrame(
         [(run_id, started_at, "bootstrap_test", "SUCCESS")],
         ["run_id", "started_at", "test_name", "status"],
-    ).withColumn(
-        "created_at", current_timestamp()
-    ).withColumn(
-        "source", lit("databricks_job_test")
-    )
+    ).withColumn("created_at", current_timestamp())
 
-    df.select(
-        "run_id",
-        "started_at",
-        "test_name",
-        "status",
-        "created_at",
-    ).write.mode("append").saveAsTable(
+    df.write.mode("append").saveAsTable(
         f"{catalog}.{schema}.bootstrap_smoke_test"
     )
 
