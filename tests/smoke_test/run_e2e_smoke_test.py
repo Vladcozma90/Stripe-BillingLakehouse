@@ -22,7 +22,7 @@ def _get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--schema", required=True)
-    parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--log_level", default="INFO")
     return parser.parse_args()
 
 
@@ -63,7 +63,7 @@ def run_e2e_smoke_test() -> None:
     # -------------------------------------------------------------------------
     landing_df = spark.createDataFrame(
         [
-            (" cus_001 ", " CUSTOMER_1@EXAMPLE.COM ", " us ", 100.00, started_at),
+            ("cus_001 ", " CUSTOMER_1@EXAMPLE.COM ", " us ", 100.00, started_at),
             ("cus_002", "customer_2@example.com", " ro", 250.00, started_at),
             ("cus_003", "CUSTOMER_3@EXAMPLE.COM", "de ", 150.00, started_at),
             ("cus_004", "customer_4@example.com", "us", 50.00, started_at),
@@ -127,7 +127,6 @@ def run_e2e_smoke_test() -> None:
             col("_run_id"),
         )
         .withColumn("_silver_processed_ts", current_timestamp())
-        .withColumn("_silver_run_id", lit(run_id))
     )
 
     silver_df.write.mode("overwrite").saveAsTable(silver_table)
@@ -167,7 +166,6 @@ def run_e2e_smoke_test() -> None:
             spark_round(spark_sum("invoice_amount_usd"), 2).alias("total_revenue_usd")
         )
         .withColumn("_gold_processed_ts", current_timestamp())
-        .withColumn("_gold_run_id", lit(run_id))
     )
 
     gold_df.write.mode("overwrite").saveAsTable(gold_table)
