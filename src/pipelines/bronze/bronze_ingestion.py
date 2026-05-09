@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def _build_config(env: EnvConfig, dataset: str) -> dict[str, Any]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
-        "tgt_table": f"{env.catalog}.{env.schemas['bronze']}.{dataset}",
+        "tgt_table": f"{env.catalog}.{env.schemas['bronze']}.b_{dataset}",
         
         "src_path": f"{env.landing_base_path}/{env.catalog}/landing_data/{dataset}",
         "tgt_path": f"{env.bronze_base_path}/{env.catalog}/{env.schemas['bronze']}/b_{dataset}",
