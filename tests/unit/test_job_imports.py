@@ -24,8 +24,8 @@ JOB_MODULES = [
     "jobs.gold.run_gold_fact_billing_revenue",
 
     # Databricks smoke tests
-    "tests.databricks_smoke.run_bootstrap_test",
-    "tests.databricks_smoke.run_e2e_smoke_test",
+    "tests.smoke_test.run_bootstrap_test",
+    "tests.smoke_test.run_e2e_smoke_test",
 ]
 
 
