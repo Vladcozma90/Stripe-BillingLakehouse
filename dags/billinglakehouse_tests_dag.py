@@ -8,12 +8,8 @@ from airflow.providers.databricks.operators.databricks import DatabricksRunNowOp
 
 DATABRICKS_CONN_ID = os.getenv("DATABRICKS_CONN_ID", "databricks_default")
 
-BOOTSTRAP_SMOKE_TEST_TEST_JOB_ID = int(
-    os.getenv("BOOTSTRAP_SMOKE_TEST_JOB_ID", "0")
-)
-
-E2E_SMOKE_TEST_JOB_ID = int(
-    os.getenv("DATABRICKS_E2E_SMOKE_TEST_JOB_ID", "0")
+DATABRICKS_SMOKE_TEST_JOB_ID = int(
+    os.getenv("DATABRICKS_SMOKE_TEST_JOB_ID", "0")
 )
 
 @dag(
@@ -32,18 +28,10 @@ E2E_SMOKE_TEST_JOB_ID = int(
 )
 def billinglakehouse_smoke_tests_dag():
 
-    trigger_bootstrap_test = DatabricksRunNowOperator(
-        task_id="trigger_bootstrap_smoke_test",
+    DatabricksRunNowOperator(
+        task_id="trigger_billinglakehouse_dev_smoke_test",
         databricks_conn_id=DATABRICKS_CONN_ID,
-        job_id=BOOTSTRAP_SMOKE_TEST_TEST_JOB_ID,
+        job_id=DATABRICKS_SMOKE_TEST_JOB_ID,
     )
-
-    trigger_e2e_smoke_test = DatabricksRunNowOperator(
-        task_id="trigger_e2e_smoke_test",
-        databricks_conn_id=DATABRICKS_CONN_ID,
-        job_id=E2E_SMOKE_TEST_JOB_ID,
-    )
-
-    trigger_bootstrap_test >> trigger_e2e_smoke_test
 
 billinglakehouse_smoke_tests_dag()
