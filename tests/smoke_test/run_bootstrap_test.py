@@ -13,7 +13,7 @@ def _get_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--schema", required=True)
-    parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--log_level", default="INFO")
     return parser.parse_args()
 
 
