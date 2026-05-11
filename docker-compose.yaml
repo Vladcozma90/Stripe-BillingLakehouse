@@ -51,6 +51,7 @@ x-airflow-common:
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
   # image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:3.1.7}
   build: .
+  image: stripe-billinglakehouse-airflow:latest
   env_file:
     - ${ENV_FILE_PATH:-.env}
   environment:
@@ -86,7 +87,7 @@ x-airflow-common:
     DATABRICKS_GOLD_JOB_ID: ${DATABRICKS_GOLD_JOB_ID:-0}
     DATABRICKS_BOOTSTRAP_JOB_ID: ${DATABRICKS_BOOTSTRAP_JOB_ID:-0}
 
-    DATABRICKS_SMOKE_TEST_JOB_ID: ${DATABRICKS_SMOKE_TEST_JOB_ID:-0}
+    DATABRICKS_SMOKE_TEST_JOB_ID: ${DATABRICKS_SMOKE_TEST_JOB_ID:-1081116369134735}
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs

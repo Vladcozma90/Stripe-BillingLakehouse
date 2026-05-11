@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import os
 from datetime import datetime, timedelta
 
@@ -12,8 +13,9 @@ DATABRICKS_SMOKE_TEST_JOB_ID = int(
     os.getenv("DATABRICKS_SMOKE_TEST_JOB_ID", "0")
 )
 
+
 @dag(
-    dag_id="billinglakehouse_smoke_tests_dag",
+    dag_id="billinglakehouse_smoke_tests",
     description="Manual smoke-test DAG for Databricks runtime and E2E lakehouse validation",
     start_date=datetime(2026, 6, 26),
     schedule=None,
@@ -26,7 +28,7 @@ DATABRICKS_SMOKE_TEST_JOB_ID = int(
     },
     tags=["stripe", "lakehouse", "databricks", "smoke-test"],
 )
-def billinglakehouse_smoke_tests_dag():
+def billinglakehouse_smoke_tests():
 
     DatabricksRunNowOperator(
         task_id="trigger_billinglakehouse_dev_smoke_test",
@@ -34,4 +36,5 @@ def billinglakehouse_smoke_tests_dag():
         job_id=DATABRICKS_SMOKE_TEST_JOB_ID,
     )
 
-billinglakehouse_smoke_tests_dag()
+
+billinglakehouse_smoke_tests()
