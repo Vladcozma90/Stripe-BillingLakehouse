@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import logging
 from pyspark.sql import SparkSession
-from pipelines.silver.silver_erp_plan_catalog import run_silver_erp_plan_catalog
+from src.pipelines.silver.silver_erp_plan_catalog import run_silver_erp_plan_catalog
 from src.services.logger import setup_log
 from src.services.envs import load_envs
 

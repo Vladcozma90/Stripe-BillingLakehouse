@@ -21,7 +21,7 @@ JOB_MODULES = [
     "jobs.silver.run_silver_stripe_subscriptions",
 
     # Gold
-    "jobs.gold.run_gold_fact_billing_revenue",
+    "jobs.gold.run_gold_dim_account_master",
 
     # Databricks smoke tests
     "tests.smoke_test.run_bootstrap_test",

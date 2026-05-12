@@ -5,19 +5,70 @@ from pathlib import Path
 import pytest
 import yaml
 from pyspark.sql import SparkSession
+from pyspark.sql.types import (
+    BooleanType,
+    DoubleType,
+    IntegerType,
+    StringType,
+    StructField,
+    StructType,
+)
 
 from src.services.dq import evaluate_dq_rules, build_dq_failure_message
 
 
+STRIPE_INVOICES_SCHEMA = StructType(
+    [
+        StructField("invoice_id", StringType(), True),
+        StructField("stripe_customer_id", StringType(), True),
+        StructField("invoice_status", StringType(), True),
+        StructField("collection_method", StringType(), True),
+        StructField("currency", StringType(), True),
+        StructField("amount_due", DoubleType(), True),
+        StructField("amount_paid", DoubleType(), True),
+        StructField("amount_remaining", DoubleType(), True),
+        StructField("subtotal", DoubleType(), True),
+        StructField("total", DoubleType(), True),
+        StructField("attempt_count", IntegerType(), True),
+        StructField("created_ts", StringType(), True),
+        StructField("due_date_ts", StringType(), True),
+        StructField("subscription_id", StringType(), True),
+        StructField("payment_intent_id", StringType(), True),
+    ]
+)
+
+
+ERP_PLAN_CATALOG_SCHEMA = StructType(
+    [
+        StructField("plan_code", StringType(), True),
+        StructField("plan_name", StringType(), True),
+        StructField("monthly_price_usd", DoubleType(), True),
+        StructField("seats_included", IntegerType(), True),
+        StructField("max_units_per_month", IntegerType(), True),
+        StructField("currency", StringType(), True),
+        StructField("billing_period", StringType(), True),
+        StructField("effective_from", StringType(), True),
+        StructField("effective_to", StringType(), True),
+        StructField("is_current", BooleanType(), True),
+        StructField("price_version", IntegerType(), True),
+    ]
+)
+
+
 @pytest.fixture(scope="session")
 def spark() -> SparkSession:
-    return (
+    spark_session = (
         SparkSession.builder
         .appName("billinglakehouse-dq-unit-tests")
         .master("local[1]")
         .config("spark.sql.shuffle.partitions", "1")
+        .config("spark.ui.enabled", "false")
         .getOrCreate()
     )
+
+    spark_session.sparkContext.setLogLevel("ERROR")
+
+    return spark_session
 
 
 @pytest.fixture(scope="session")
@@ -35,7 +86,7 @@ def test_stripe_invoices_dq_detects_invalid_records(
     rules = dev_config["datasets"]["stripe_invoices"]["data_quality"]["rules"]
 
     df = spark.createDataFrame(
-        [
+        data=[
             (
                 "inv_001",
                 "cus_001",
@@ -71,29 +122,12 @@ def test_stripe_invoices_dq_detects_invalid_records(
                 "pi_002",
             ),
         ],
-        [
-            "invoice_id",
-            "stripe_customer_id",
-            "invoice_status",
-            "collection_method",
-            "currency",
-            "amount_due",
-            "amount_paid",
-            "amount_remaining",
-            "subtotal",
-            "total",
-            "attempt_count",
-            "created_ts",
-            "due_date_ts",
-            "subscription_id",
-            "payment_intent_id",
-        ],
+        schema=STRIPE_INVOICES_SCHEMA,
     )
 
     metrics = evaluate_dq_rules(
         df=df,
         rules=rules,
-        dataset="stripe_invoices",
     )
 
     assert metrics["overall_result"] == "FAIL"
@@ -118,7 +152,7 @@ def test_stripe_invoices_dq_passes_valid_records(
     rules = dev_config["datasets"]["stripe_invoices"]["data_quality"]["rules"]
 
     df = spark.createDataFrame(
-        [
+        data=[
             (
                 "inv_001",
                 "cus_001",
@@ -154,29 +188,12 @@ def test_stripe_invoices_dq_passes_valid_records(
                 "pi_002",
             ),
         ],
-        [
-            "invoice_id",
-            "stripe_customer_id",
-            "invoice_status",
-            "collection_method",
-            "currency",
-            "amount_due",
-            "amount_paid",
-            "amount_remaining",
-            "subtotal",
-            "total",
-            "attempt_count",
-            "created_ts",
-            "due_date_ts",
-            "subscription_id",
-            "payment_intent_id",
-        ],
+        schema=STRIPE_INVOICES_SCHEMA,
     )
 
     metrics = evaluate_dq_rules(
         df=df,
         rules=rules,
-        dataset="stripe_invoices",
     )
 
     assert metrics["overall_result"] == "OK"
@@ -189,7 +206,7 @@ def test_erp_plan_catalog_dq_detects_duplicate_and_invalid_values(
     rules = dev_config["datasets"]["erp_plan_catalog"]["data_quality"]["rules"]
 
     df = spark.createDataFrame(
-        [
+        data=[
             (
                 "BASIC",
                 "Basic Plan",
@@ -217,25 +234,12 @@ def test_erp_plan_catalog_dq_detects_duplicate_and_invalid_values(
                 1,
             ),
         ],
-        [
-            "plan_code",
-            "plan_name",
-            "monthly_price_usd",
-            "seats_included",
-            "max_units_per_month",
-            "currency",
-            "billing_period",
-            "effective_from",
-            "effective_to",
-            "is_current",
-            "price_version",
-        ],
+        schema=ERP_PLAN_CATALOG_SCHEMA,
     )
 
     metrics = evaluate_dq_rules(
         df=df,
         rules=rules,
-        dataset="erp_plan_catalog",
     )
 
     assert metrics["overall_result"] == "FAIL"
@@ -254,14 +258,14 @@ def test_erp_plan_catalog_dq_detects_duplicate_and_invalid_values(
     assert ("effective_from", "valid_date") in failed_rules
 
 
-def test_build_failure_message_contains_failed_rule_details(
+def test_build_dq_failure_message_contains_failed_rule_details(
     spark: SparkSession,
     dev_config: dict,
 ) -> None:
     rules = dev_config["datasets"]["stripe_invoices"]["data_quality"]["rules"]
 
     df = spark.createDataFrame(
-        [
+        data=[
             (
                 "inv_001",
                 "cus_001",
@@ -280,29 +284,12 @@ def test_build_failure_message_contains_failed_rule_details(
                 "pi_001",
             ),
         ],
-        [
-            "invoice_id",
-            "stripe_customer_id",
-            "invoice_status",
-            "collection_method",
-            "currency",
-            "amount_due",
-            "amount_paid",
-            "amount_remaining",
-            "subtotal",
-            "total",
-            "attempt_count",
-            "created_ts",
-            "due_date_ts",
-            "subscription_id",
-            "payment_intent_id",
-        ],
+        schema=STRIPE_INVOICES_SCHEMA,
     )
 
     metrics = evaluate_dq_rules(
         df=df,
         rules=rules,
-        dataset="stripe_invoices",
     )
 
     message = build_dq_failure_message(metrics)

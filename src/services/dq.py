@@ -1,24 +1,26 @@
 from __future__ import annotations
-from typing import Any
+
 from datetime import datetime
-from pyspark.sql import SparkSession, DataFrame
+from typing import Any
+
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col,
+    concat_ws,
     count,
-    lit,
-    when,
-    sum as spark_sum,
     countDistinct,
-    to_date,
-    to_timestamp,
-    trim,
     current_timestamp,
-    concat_ws
+    expr,
+    lit,
+    sum as spark_sum,
+    trim,
+    when,
 )
 
+
 def evaluate_dq_rules(
-        df: DataFrame,
-        rules: dict[str, dict[str, Any]],
+    df: DataFrame,
+    rules: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     """
     Evaluate batch-level DQ rules against a DataFrame.
@@ -30,8 +32,8 @@ def evaluate_dq_rules(
     - unique
     - valid_date
     - valid_timestamp
-    
-    returns normalized metrics structure for downstream logging and fail logic.
+
+    Returns normalized metrics structure for downstream logging and fail logic.
     """
 
     if not rules:
@@ -40,221 +42,268 @@ def evaluate_dq_rules(
             "overall_result": "OK",
             "rule_results": [],
         }
-    
-    missing_columns = [column_name for column_name in rules if column_name not in df.columns]
+
+    missing_columns = [
+        column_name
+        for column_name in rules
+        if column_name not in df.columns
+    ]
 
     if missing_columns:
-        raise ValueError(f"Columns missing from DataFrame for DQ evaluation: {missing_columns}")
-    
+        raise ValueError(
+            f"Columns missing from DataFrame for DQ evaluation: {missing_columns}"
+        )
+
     agg_exprs = [count(lit(1)).alias("total_rows")]
 
     for column_name, column_rules in rules.items():
-        
+
         if "max_null" in column_rules:
             agg_exprs.append(
-                spark_sum(when(col(column_name).isNull(), 1).otherwise(0)
-                .alias(f"{column_name}__null_count"))
+                spark_sum(
+                    when(col(column_name).isNull(), 1).otherwise(0)
+                ).alias(f"{column_name}__null_count")
             )
-        
+
         if "min_value" in column_rules:
             min_value = column_rules["min_value"]
+
             agg_exprs.append(
-                spark_sum(when(col(column_name).isNotNull() & (col(column_name) < lit(min_value)), 1).otherwise(0))
-                .alias(f"{column_name}__min_value_fail_count")
+                spark_sum(
+                    when(
+                        col(column_name).isNotNull()
+                        & (col(column_name) < lit(min_value)),
+                        1,
+                    ).otherwise(0)
+                ).alias(f"{column_name}__min_value_fail_count")
             )
 
         if "accepted_values" in column_rules:
             accepted_values = column_rules["accepted_values"]
+
             agg_exprs.append(
-                spark_sum(when(col(column_name).isNotNull() & (~col(column_name).isin(*accepted_values)), 1).otherwise(0))
-                .alias(f"{column_name}__accepted_values_fail_count")
+                spark_sum(
+                    when(
+                        col(column_name).isNotNull()
+                        & (~col(column_name).isin(*accepted_values)),
+                        1,
+                    ).otherwise(0)
+                ).alias(f"{column_name}__accepted_values_fail_count")
             )
 
         if "unique" in column_rules and column_rules["unique"]:
             agg_exprs.append(
-                countDistinct(col(column_name)).alias(f"{column_name}__distinct_count")
+                countDistinct(col(column_name)).alias(
+                    f"{column_name}__distinct_count"
+                )
             )
+
             agg_exprs.append(
-                spark_sum(when(col(column_name).isNull(), 1).otherwise(0))
-                .alias(f"{column_name}__null_count_for_unique")
+                spark_sum(
+                    when(col(column_name).isNull(), 1).otherwise(0)
+                ).alias(f"{column_name}__null_count_for_unique")
             )
 
         if "valid_date" in column_rules and column_rules["valid_date"]:
+            parsed_date = expr(f"try_cast(`{column_name}` as date)")
+
             agg_exprs.append(
-                spark_sum(when(col(column_name).isNotNull() & to_date(col(column_name)).isNull(), 1).otherwise(0))
-                .alias(f"{column_name}_valid_date_fail_count")
+                spark_sum(
+                    when(
+                        col(column_name).isNotNull()
+                        & parsed_date.isNull(),
+                        1,
+                    ).otherwise(0)
+                ).alias(f"{column_name}__valid_date_fail_count")
             )
 
         if "valid_timestamp" in column_rules and column_rules["valid_timestamp"]:
+            parsed_timestamp = expr(f"try_cast(`{column_name}` as timestamp)")
+
             agg_exprs.append(
-                spark_sum(when(col(column_name).isNotNull() & to_timestamp(col(column_name)).isNull(), 1).otherwise(0))
-                .alias(f"{column_name}__valid_timestamp_fail_count")
+                spark_sum(
+                    when(
+                        col(column_name).isNotNull()
+                        & parsed_timestamp.isNull(),
+                        1,
+                    ).otherwise(0)
+                ).alias(f"{column_name}__valid_timestamp_fail_count")
             )
-        
-        agg_row = df.agg(*agg_exprs).collect()[0]
-        total_rows = agg_row["total_rows"]
 
-        rule_results: list[dict[str, Any]] = []
-        overall_result = "OK"
+    agg_row = df.agg(*agg_exprs).collect()[0]
+    total_rows = int(agg_row["total_rows"])
 
-        for column_name, column_rules in rules.items():
-            severity = column_rules.get("severity", "error").upper()
+    rule_results: list[dict[str, Any]] = []
+    overall_result = "OK"
 
-            if "max_null" in column_rules:
-                null_count = int(agg_row[f"{column_name}__null_count"])
-                actual_value = (null_count / total_rows) if total_rows else 0.0
-                threshold_value = float(column_rules["max_null"])
-                dq_result = "FAIL" if actual_value > threshold_value else "OK"
+    for column_name, column_rules in rules.items():
+        severity = column_rules.get("severity", "error").upper()
 
-                if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result = "FAIL"
-                
-                rule_results.append(
-                    {
-                        "column_name": column_name,
-                        "rule_name": "max_null",
-                        "actual_value": float(actual_value),
-                        "threshold_value": threshold_value,
-                        "failed_rows": null_count,
-                        "severity": severity,
-                        "dq_result": dq_result,
-                    }
-                )
+        if "max_null" in column_rules:
+            null_count = int(agg_row[f"{column_name}__null_count"])
+            actual_value = (null_count / total_rows) if total_rows else 0.0
+            threshold_value = float(column_rules["max_null"])
+            dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
-            if "min_value" in column_rules:
-                fail_count = int(agg_row[f"{column_name}__min_value_fail_count"])
-                actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = 0.0
-                dq_result = "FAIL" if actual_value > threshold_value else "OK"
+            if dq_result == "FAIL" and severity == "ERROR":
+                overall_result = "FAIL"
 
-                if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result = "FAIL"
-                
-                rule_results.append(
-                    {
-                        "column_name": column_name,
-                        "rule_name": "min_value",
-                        "actual_value": float(actual_value),
-                        "threshold_value": threshold_value,
-                        "failed_rows": fail_count,
-                        "severity": severity,
-                        "dq_result": dq_result,
-                    }
-                )
-            
-            if "accepted_values" in column_rules:
-                fail_count = int(agg_row[f"{column_name}__accepted_values_fail_count"])
-                actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = 0.0
-                dq_result = "FAIL" if actual_value > threshold_value else "OK"
+            rule_results.append(
+                {
+                    "column_name": column_name,
+                    "rule_name": "max_null",
+                    "actual_value": float(actual_value),
+                    "threshold_value": threshold_value,
+                    "failed_rows": null_count,
+                    "severity": severity,
+                    "dq_result": dq_result,
+                }
+            )
 
-                if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result = "FAIL"
-                
-                rule_results.append(
-                    {
-                        "column_name": column_name,
-                        "rule_name": "accepted_values",
-                        "actual_value": float(actual_value),
-                        "threshold_value": threshold_value,
-                        "failed_rows": fail_count,
-                        "severity": severity,
-                        "dq_result": dq_result,
-                    }
-                )
-            
-            if "unique" in column_rules and column_rules["unique"]:
-                distinct_count = int(agg_row[f"{column_name}__distinct_count"])
-                null_count_for_unique = int(agg_row[f"{column_name}__null_count_for_unique"])
-                non_null_rows = total_rows - null_count_for_unique
-                duplicate_count = max(non_null_rows - distinct_count, 0)
-                actual_value = (duplicate_count / total_rows) if total_rows else 0.0
-                threshold_value = 0.0
-                dq_result = "FAIL" if actual_value > threshold_value else "OK"
+        if "min_value" in column_rules:
+            fail_count = int(agg_row[f"{column_name}__min_value_fail_count"])
+            actual_value = (fail_count / total_rows) if total_rows else 0.0
+            threshold_value = 0.0
+            dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
-                if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result = "FAIL"
-                
-                rule_results.append(
-                    {
-                        "column_name": column_name,
-                        "rule_name": "unique",
-                        "actual_value": float(actual_value),
-                        "threshold_value": threshold_value,
-                        "failed_rows": duplicate_count,
-                        "severity": severity,
-                        "dq_result": dq_result,
-                    }
-                )
+            if dq_result == "FAIL" and severity == "ERROR":
+                overall_result = "FAIL"
 
-            if "valid_date" in column_rules and column_rules["valid_date"]:
-                fail_count = int(agg_row[f"{column_name}__valid_date_fail_count"])
-                actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = 0.0
-                dq_result = "FAIL" if fail_count > 0 else "OK"
+            rule_results.append(
+                {
+                    "column_name": column_name,
+                    "rule_name": "min_value",
+                    "actual_value": float(actual_value),
+                    "threshold_value": threshold_value,
+                    "failed_rows": fail_count,
+                    "severity": severity,
+                    "dq_result": dq_result,
+                }
+            )
 
-                if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result = "FAIL"
+        if "accepted_values" in column_rules:
+            fail_count = int(
+                agg_row[f"{column_name}__accepted_values_fail_count"]
+            )
+            actual_value = (fail_count / total_rows) if total_rows else 0.0
+            threshold_value = 0.0
+            dq_result = "FAIL" if actual_value > threshold_value else "OK"
 
-                rule_results.append(
-                    {
-                        "column_name": column_name,
-                        "rule_name": "valid_date",
-                        "actual_value": float(actual_value),
-                        "threshold_value": threshold_value,
-                        "failed_rows": fail_count,
-                        "severity": severity,
-                        "dq_result": dq_result,
-                    }
-                )
+            if dq_result == "FAIL" and severity == "ERROR":
+                overall_result = "FAIL"
 
-            if "valid_timestamp" in column_rules and column_rules["valid_timestamp"]:
-                fail_count = int(agg_row[f"{column_name}__valid_timestamp_fail_count"])
-                actual_value = (fail_count / total_rows) if total_rows else 0.0
-                threshold_value = 0.0
-                dq_result = "FAIL" if actual_value > threshold_value else "OK"
+            rule_results.append(
+                {
+                    "column_name": column_name,
+                    "rule_name": "accepted_values",
+                    "actual_value": float(actual_value),
+                    "threshold_value": threshold_value,
+                    "failed_rows": fail_count,
+                    "severity": severity,
+                    "dq_result": dq_result,
+                }
+            )
 
-                if dq_result == "FAIL" and severity == "ERROR":
-                    overall_result = "FAIL"
+        if "unique" in column_rules and column_rules["unique"]:
+            distinct_count = int(agg_row[f"{column_name}__distinct_count"])
+            null_count_for_unique = int(
+                agg_row[f"{column_name}__null_count_for_unique"]
+            )
 
-                rule_results.append(
-                    {
-                        "column_name": column_name,
-                        "rule_name": "valid_timestamp",
-                        "actual_value": float(actual_value),
-                        "threshold_value": threshold_value,
-                        "failed_rows": fail_count,
-                        "severity": severity,
-                        "dq_result": dq_result
-                    }
-                )
+            non_null_rows = total_rows - null_count_for_unique
+            duplicate_count = max(non_null_rows - distinct_count, 0)
 
-        return {
-            "total_rows": total_rows,
-            "rule_results": rule_results,
-            "overall_result": overall_result
-        }
-    
+            actual_value = (duplicate_count / total_rows) if total_rows else 0.0
+            threshold_value = 0.0
+            dq_result = "FAIL" if actual_value > threshold_value else "OK"
+
+            if dq_result == "FAIL" and severity == "ERROR":
+                overall_result = "FAIL"
+
+            rule_results.append(
+                {
+                    "column_name": column_name,
+                    "rule_name": "unique",
+                    "actual_value": float(actual_value),
+                    "threshold_value": threshold_value,
+                    "failed_rows": duplicate_count,
+                    "severity": severity,
+                    "dq_result": dq_result,
+                }
+            )
+
+        if "valid_date" in column_rules and column_rules["valid_date"]:
+            fail_count = int(
+                agg_row[f"{column_name}__valid_date_fail_count"]
+            )
+            actual_value = (fail_count / total_rows) if total_rows else 0.0
+            threshold_value = 0.0
+            dq_result = "FAIL" if actual_value > threshold_value else "OK"
+
+            if dq_result == "FAIL" and severity == "ERROR":
+                overall_result = "FAIL"
+
+            rule_results.append(
+                {
+                    "column_name": column_name,
+                    "rule_name": "valid_date",
+                    "actual_value": float(actual_value),
+                    "threshold_value": threshold_value,
+                    "failed_rows": fail_count,
+                    "severity": severity,
+                    "dq_result": dq_result,
+                }
+            )
+
+        if "valid_timestamp" in column_rules and column_rules["valid_timestamp"]:
+            fail_count = int(
+                agg_row[f"{column_name}__valid_timestamp_fail_count"]
+            )
+            actual_value = (fail_count / total_rows) if total_rows else 0.0
+            threshold_value = 0.0
+            dq_result = "FAIL" if actual_value > threshold_value else "OK"
+
+            if dq_result == "FAIL" and severity == "ERROR":
+                overall_result = "FAIL"
+
+            rule_results.append(
+                {
+                    "column_name": column_name,
+                    "rule_name": "valid_timestamp",
+                    "actual_value": float(actual_value),
+                    "threshold_value": threshold_value,
+                    "failed_rows": fail_count,
+                    "severity": severity,
+                    "dq_result": dq_result,
+                }
+            )
+
+    return {
+        "total_rows": total_rows,
+        "rule_results": rule_results,
+        "overall_result": overall_result,
+    }
+
 
 def build_dq_results_df(
-        spark: SparkSession,
-        dq_source: str,
-        run_id: str,
-        metrics: dict[str, Any],
+    spark: SparkSession,
+    dq_source: str,
+    run_id: str,
+    metrics: dict[str, Any],
 ) -> DataFrame:
-    
-    rows = [(
-        dq_source,
-        run_id,
-        datetime.utcnow(),
-        int(metrics["total_rows"]),
-        rule_result["column_name"],
-        rule_result["rule_name"],
-        float(rule_result["actual_value"]),
-        float(rule_result["threshold_value"]),
-        int(rule_result["failed_rows"]),  
-        rule_result["severity"],
-        rule_result["dq_result"],
+    rows = [
+        (
+            dq_source,
+            run_id,
+            datetime.utcnow(),
+            int(metrics["total_rows"]),
+            rule_result["column_name"],
+            rule_result["rule_name"],
+            float(rule_result["actual_value"]),
+            float(rule_result["threshold_value"]),
+            int(rule_result["failed_rows"]),
+            rule_result["severity"],
+            rule_result["dq_result"],
         )
         for rule_result in metrics["rule_results"]
     ]
@@ -278,47 +327,55 @@ def build_dq_results_df(
 
 
 def build_dq_failure_message(metrics: dict[str, Any]) -> str:
-
-    failed_rules = [r for r in metrics["rule_results"] if r["dq_result"] == "FAIL"]
+    failed_rules = [
+        rule_result
+        for rule_result in metrics["rule_results"]
+        if rule_result["dq_result"] == "FAIL"
+    ]
 
     if not failed_rules:
         return "DQ_FAIL"
 
     parts = [
         (
-            f"{r['column_name']}:{r['rule_name']} "
-            f"actual_value={r['actual_value']:.4f} "
-            f"threshold_value={r['threshold_value']:.4f}"
-            f"failed_rows={r['failed_rows']} "
-            f"severity={r['severity']}"
+            f"{rule_result['column_name']}:{rule_result['rule_name']} "
+            f"actual_value={rule_result['actual_value']:.4f} "
+            f"threshold_value={rule_result['threshold_value']:.4f} "
+            f"failed_rows={rule_result['failed_rows']} "
+            f"severity={rule_result['severity']}"
         )
-        for r in failed_rules
+        for rule_result in failed_rules
     ]
 
     return "DQ FAIL | " + " | ".join(parts)
 
 
-
-
-
 def quarantine_by_business_key(
-        stage_df: DataFrame,
-        key_columns: list[str]
+    stage_df: DataFrame,
+    key_columns: list[str],
 ) -> tuple[DataFrame, DataFrame]:
-    
     if not key_columns:
         raise ValueError("key_columns must not be empty.")
-    
-    missing_columns = [c for c in key_columns if c not in stage_df.columns]
+
+    missing_columns = [
+        column_name
+        for column_name in key_columns
+        if column_name not in stage_df.columns
+    ]
+
     if missing_columns:
-        raise ValueError(f"Business key columns missing from stage_df: {missing_columns}")
-    
+        raise ValueError(
+            f"Business key columns missing from stage_df: {missing_columns}"
+        )
+
     invalid_conditions = [
-        col(c).isNull() | (trim(col(c).cast("string")) == "")
-        for c in key_columns
+        col(column_name).isNull()
+        | (trim(col(column_name).cast("string")) == "")
+        for column_name in key_columns
     ]
 
     invalid_key_condition = invalid_conditions[0]
+
     for condition in invalid_conditions[1:]:
         invalid_key_condition = invalid_key_condition | condition
 
@@ -326,11 +383,12 @@ def quarantine_by_business_key(
         ";",
         *[
             when(
-                col(c).isNull() | (trim(col(c).cast("string")) == ""),
-                lit(f"{c} is NULL/BLANK")
+                col(column_name).isNull()
+                | (trim(col(column_name).cast("string")) == ""),
+                lit(f"{column_name} is NULL/BLANK"),
             )
-            for c in key_columns
-        ]
+            for column_name in key_columns
+        ],
     )
 
     bad_records = (
@@ -339,7 +397,7 @@ def quarantine_by_business_key(
         .withColumn("quarantine_reason", quarantine_reason)
         .withColumn("quarantine_ts", current_timestamp())
     )
-    
+
     good_records = stage_df.filter(~invalid_key_condition)
 
     return bad_records, good_records
