@@ -14,7 +14,9 @@ from pyspark.sql.functions import (
     concat_ws,
     sha2,
     coalesce,
+    expr,
 )
+
 from src.services.envs import EnvConfig
 
 from src.services.audit import (
@@ -26,14 +28,17 @@ from src.services.audit import (
 
 from src.services.watermark import read_incremental_by_watermark, upsert_watermark
 from src.services.delta_table import write_append_table
-from src.services.dq import (evaluate_dq_rules,
-                         build_dq_results_df,
-                         build_dq_failure_message,
-                         quarantine_by_business_key)
+from src.services.dq import (
+    evaluate_dq_rules,
+    build_dq_results_df,
+    build_dq_failure_message,
+    quarantine_by_business_key
+)
 from src.services.transformations import deduplicate_by_business_key
 
 
 logger = logging.getLogger(__name__)
+
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
@@ -42,7 +47,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_erp_plan_catalog",
         "quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_erp_plan_catalog",
         "conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_plan_catalog",
-        
+
         "bronze_path": f"{env.bronze_base_path}/{env.catalog}/{env.schemas['bronze']}/b_erp_plan_catalog",
         "dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_plan_catalog/s_dq_erp_plan_catalog",
         "quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_plan_catalog/s_quarantine_erp_plan_catalog",
@@ -70,6 +75,7 @@ def _get_required_columns() -> list[str]:
         "_landing_format",
     ]
 
+
 def _build_stage_erp_plan_catalog(incr_df: DataFrame, run_id: str):
     return (
         incr_df
@@ -83,11 +89,23 @@ def _build_stage_erp_plan_catalog(incr_df: DataFrame, run_id: str):
         .withColumn("seats_included", col("seats_included").cast("bigint"))
         .withColumn("max_units_per_month", col("max_units_per_month").cast("bigint"))
 
-        .withColumn("effective_from", col("effective_from").cast("date"))
-        .withColumn("effective_to", col("effective_to").cast("date"))
+        .withColumn(
+            "effective_from",
+            coalesce(
+                expr("try_cast(trim(effective_from) as date)"),
+                expr("cast(try_to_timestamp(trim(effective_from), 'dd/MM/yyyy') as date)")
+            )
+        )
+        .withColumn(
+            "effective_to",
+            coalesce(
+                expr("try_cast(trim(effective_to) as date)"),
+                expr("cast(try_to_timestamp(trim(effective_to), 'dd/MM/yyyy') as date)")
+            )
+        )
 
         .withColumn("source_is_current", col("is_current").cast("boolean"))
-        
+
         .withColumn("etl_run_id", lit(run_id))
         .withColumn("silver_processed_ts", current_timestamp())
         .withColumn("silver_processed_date", current_date())
@@ -160,8 +178,9 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
             "etl_run_id",
             "silver_effective_start_ts",
             "record_hash",
-            )
         )
+    )
+
 
 def _merge_conform_scd2(
         spark: SparkSession,
@@ -170,15 +189,15 @@ def _merge_conform_scd2(
         run_id: str,
         key_columns: list[str],
 ) -> None:
-    
+
     if not key_columns:
         raise ValueError("key_columns must not be empty.")
-    
+
     missing_columns = [c for c in key_columns if c not in incoming_df.columns]
 
     if missing_columns:
         raise ValueError(f"Key columns missing from incoming_df: {missing_columns}")
-    
+
     conform_dt = DeltaTable.forName(spark, conform_table)
 
     unknown_df = _build_unknown_df(spark, run_id)
@@ -196,11 +215,11 @@ def _merge_conform_scd2(
         .select(*key_columns, "record_hash")
     )
 
-    join_condition = " AND ".join([f"inc.{c} = con.{c}" for c in key_columns])
+    join_condition = " AND ".join([f"inc.{c} <=> con.{c}" for c in key_columns])
 
     joined_df = incoming_df.alias("inc").join(
         conform_active.alias("con"),
-        on=join_condition,
+        on=expr(join_condition),
         how="left"
     )
 
@@ -215,7 +234,6 @@ def _merge_conform_scd2(
         .filter(col("con.record_hash").isNull())
         .select("inc.*")
     )
-
 
     update_changed_df = (
         changed_df
@@ -235,7 +253,6 @@ def _merge_conform_scd2(
         .withColumn("scd_action", lit("INSERT"))
     )
 
-
     staged_df = (
         update_changed_df
         .unionByName(insert_changed_df)
@@ -245,7 +262,13 @@ def _merge_conform_scd2(
         .withColumn("updated_at", current_timestamp())
     )
 
-    merge_condition = " AND ".join([*(f"t.{c} = s.{c}" for c in key_columns), "t.is_current = true"])
+    merge_condition = " AND ".join(
+        [
+            *(f"t.{c} <=> s.{c}" for c in key_columns),
+            "t.is_current = true",
+            "s.scd_action = 'UPDATE'",
+        ]
+    )
 
     (
         conform_dt.alias("t")
@@ -288,16 +311,13 @@ def _merge_conform_scd2(
     )
 
 
-
-
-
 def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
-    
+
     pipeline_name = "silver_erp_plan_catalog"
     dataset = "erp_plan_catalog"
     run_id = uuid.uuid4().hex
     business_key = ["plan_code", "effective_from"]
-    
+
     cfg = _build_config(env)
 
     rows_in = 0
@@ -326,8 +346,7 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
         required_columns = _get_required_columns()
         missing_columns = [c for c in required_columns if c not in bronze_df.columns]
         if missing_columns:
-            raise ValueError(f"Bronze missing required colums: {missing_columns}")
-        
+            raise ValueError(f"Bronze missing required columns: {missing_columns}")
 
         # incrementation, get wms
         incr_df, last_wm, new_wm = read_incremental_by_watermark(
@@ -350,14 +369,12 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             )
             logger.info("No new data. Exiting.")
             return
-        
 
         # staging
         stage_df = _build_stage_erp_plan_catalog(
             incr_df=incr_df,
             run_id=run_id,
         )
-
 
         # dq
 
@@ -381,7 +398,6 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
         if dq_result == "FAIL":
             raise ValueError(build_dq_failure_message(dq_metrics))
 
-        
         # quarantination
         bad_records, good_records = quarantine_by_business_key(
             stage_df=stage_df,
@@ -407,9 +423,38 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
 
-
         # conform creation
         incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
+
+        if rows_out == 0:
+            upsert_watermark(
+                spark=spark,
+                state_table=cfg["state_table"],
+                new_wm=new_wm,
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id
+            )
+
+            update_run_log_success(
+                spark=spark,
+                run_logs_table=cfg["run_logs_table"],
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+                dq_result=dq_result,
+                rows_in=rows_in,
+                rows_out=rows_out,
+                rows_quarantined=rows_quarantined,
+                last_watermark_ts=last_wm,
+            )
+
+            logger.info(
+                "No valid plan catalog rows to merge | run_id=%s",
+                run_id,
+            )
+            return
+
         _merge_conform_scd2(
             spark=spark,
             conform_table=cfg["conform_table"],
@@ -437,7 +482,7 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
-            last_watermark_ts=new_wm,
+            last_watermark_ts=last_wm,
         )
 
         logger.info(
@@ -445,7 +490,7 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             rows_in,
             rows_out,
             rows_quarantined,
-        )       
+        )
 
     except Exception as e:
         update_run_log_failure(
@@ -458,7 +503,7 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
-            dq_result="ERROR",
+            dq_result=dq_result,
             last_watermark_ts=last_wm,
         )
         logger.exception("silver_erp_plan_catalog FAILED")

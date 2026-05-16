@@ -11,8 +11,8 @@ from pyspark.sql.functions import (
     lower,
     current_timestamp,
     current_date,
-    to_timestamp,
-    from_unixtime,
+    expr,
+    coalesce,
 )
 
 from src.services.envs import EnvConfig
@@ -85,17 +85,49 @@ def _build_stage_stripe_invoices(incr_df: DataFrame, run_id: str) -> DataFrame:
         .withColumn("is_livemode", col("data.livemode").cast("boolean"))
         .withColumn("auto_advance", col("data.auto_advance").cast("boolean"))
 
-        .withColumn("created_ts", to_timestamp(from_unixtime(col("data.created"))))
-        .withColumn("due_date_ts", to_timestamp(from_unixtime(col("data.due_date"))))
-        .withColumn("period_start_ts", to_timestamp(from_unixtime(col("data.period_start"))))
-        .withColumn("period_end_ts", to_timestamp(from_unixtime(col("data.period_end"))))
-        
-        .withColumn("status_finalized_ts", to_timestamp(from_unixtime(col("data.status_transitions.finalized_at"))))
-        .withColumn("status_paid_ts", to_timestamp(from_unixtime(col("data.status_transitions.paid_at"))))
-        .withColumn("status_voided_ts", to_timestamp(from_unixtime(col("data.status_transitions.voided_at"))))
-        .withColumn("status_marked_uncollectible_ts", to_timestamp(from_unixtime(col("data.status_transitions.marked_uncollectible_at"))))
+        .withColumn(
+            "created_ts",
+            expr("try_cast(from_unixtime(cast(data.created as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "due_date_ts",
+            expr("try_cast(from_unixtime(cast(data.due_date as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "period_start_ts",
+            expr("try_cast(from_unixtime(cast(data.period_start as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "period_end_ts",
+            expr("try_cast(from_unixtime(cast(data.period_end as bigint)) as timestamp)")
+        )
 
-        .withColumn("api_extracted_ts", to_timestamp(col("_extracted_at")))
+        .withColumn(
+            "status_finalized_ts",
+            expr("try_cast(from_unixtime(cast(data.status_transitions.finalized_at as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "status_paid_ts",
+            expr("try_cast(from_unixtime(cast(data.status_transitions.paid_at as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "status_voided_ts",
+            expr("try_cast(from_unixtime(cast(data.status_transitions.voided_at as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "status_marked_uncollectible_ts",
+            expr("try_cast(from_unixtime(cast(data.status_transitions.marked_uncollectible_at as bigint)) as timestamp)")
+        )
+
+        .withColumn(
+            "api_extracted_ts",
+            coalesce(
+                expr("try_cast(trim(_extracted_at) as timestamp)"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd HH:mm:ss')"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd''T''HH:mm:ss.SSSXXX')"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd''T''HH:mm:ssXXX')")
+            )
+        )
         .withColumn("etl_run_id", lit(run_id))
         .withColumn("silver_processed_ts", current_timestamp())
         .withColumn("silver_processed_date", current_date())
@@ -156,6 +188,10 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
     business_key = ["invoice_id"]
     order_columns = ["_ingest_ts", "silver_processed_ts"]
 
+    stage_df = None
+    bad_records = None
+    dedup_df = None
+
     insert_run_log_start(
         spark=spark,
         run_logs_table=cfg["run_logs_table"],
@@ -172,6 +208,7 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
 
         required_columns = _get_required_columns()
         missing_columns = [c for c in required_columns if c not in bronze_df.columns]
+
         if missing_columns:
             raise ValueError(f"Bronze missing required cols: {missing_columns}")
 
@@ -199,7 +236,7 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
         stage_df = _build_stage_stripe_invoices(
             incr_df=incr_df,
             run_id=run_id,
-        )
+        ).persist()
 
         dq_rules = env.datasets[dataset]["data_quality"]["rules"]
         dq_metrics = evaluate_dq_rules(stage_df, dq_rules)
@@ -227,6 +264,8 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             key_columns=business_key,
         )
 
+        bad_records = bad_records.persist()
+
         write_append_table(
             spark=spark,
             df=bad_records,
@@ -238,11 +277,40 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             df=good_records,
             key_columns=business_key,
             order_columns=order_columns,
-        )
+        ).persist()
 
-        rows_in = good_records.count()
+        rows_in = stage_df.count()
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
+
+        if rows_out == 0:
+            upsert_watermark(
+                spark=spark,
+                state_table=cfg["state_table"],
+                new_wm=new_wm,
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+            )
+
+            update_run_log_success(
+                spark=spark,
+                run_logs_table=cfg["run_logs_table"],
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+                dq_result=dq_result,
+                rows_in=rows_in,
+                rows_out=rows_out,
+                rows_quarantined=rows_quarantined,
+                last_watermark_ts=last_wm,
+            )
+
+            logger.info(
+                "No valid invoice rows to merge | run_id=%s",
+                run_id,
+            )
+            return
 
         merge_current_snapshot(
             spark=spark,
@@ -270,7 +338,7 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
-            last_watermark_ts=new_wm,
+            last_watermark_ts=last_wm,
         )
 
         logger.info(
@@ -291,8 +359,17 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
-            dq_result="ERROR",
+            dq_result=dq_result,
             last_watermark_ts=last_wm,
         )
-        logger.exception("Silver stripe_invoices FAILED")
+
+        logger.exception("Silver stripe_invoices FAILED | run_id=%s", run_id)
         raise
+
+    finally:
+        for cached_df in (stage_df, bad_records, dedup_df):
+            if cached_df is not None:
+                try:
+                    cached_df.unpersist()
+                except Exception as e:
+                    logger.warning("Failed to unpersist cached DataFrame: %s | run_id=%s", e, run_id)

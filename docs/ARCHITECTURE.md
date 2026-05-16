@@ -483,7 +483,5 @@ For recurring scheduled runs, bootstrap may be excluded once the environment is 
 Normal recurring flow:
 
 ```text
-bronze
-  -> silver
-  -> gold
+bronze -> silver -> gold
 ```

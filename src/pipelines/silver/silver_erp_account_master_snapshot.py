@@ -8,13 +8,12 @@ from pyspark.sql.functions import (
     upper,
     when,
     coalesce,
-    to_date,
     lit,
     current_timestamp,
     current_date,
     sha2,
-    concat_ws
-    
+    concat_ws,
+    expr,
 )
 from datetime import datetime
 from delta.tables import DeltaTable
@@ -49,6 +48,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_account_master_snapshot/s_conform_erp_account_master_snapshot",
     }
 
+
 def _get_required_columns() -> list[str]:
     return [
         "account_id",
@@ -70,6 +70,7 @@ def _get_required_columns() -> list[str]:
         "_source",
         "_landing_format",
     ]
+
 
 def _build_stage_erp_account_master_snapshot(incr_df: DataFrame, run_id: str) -> DataFrame:
     df = (
@@ -103,27 +104,26 @@ def _build_stage_erp_account_master_snapshot(incr_df: DataFrame, run_id: str) ->
             "region",
             when(col("region").isin("EMEA", "APAC", "AMER", "LATAM"), col("region"))
             .otherwise(lit(None))
-            )
-
+        )
         .withColumn(
-            "account_created_at",
+            "account_created_at_raw",
             coalesce(
-                to_date(trim(col("account_created_at")), "yyyy-MM-dd"),
-                to_date(trim(col("account_created_at")), "dd/MM/yyyy")
+                expr("try_cast(trim(account_created_at_raw) as date)"),
+                expr("cast(try_to_timestamp(trim(account_created_at_raw), 'dd/MM/yyyy') as date)")
             )
         )
         .withColumn(
-            "churned_at",
+            "churned_at_raw",
             coalesce(
-                to_date(trim(col("churned_at")), "yyyy-MM-dd"),
-                to_date(trim(col("churned_at")), "dd/MM/yyyy")
+                expr("try_cast(trim(churned_at_raw) as date)"),
+                expr("cast(try_to_timestamp(trim(churned_at_raw), 'dd/MM/yyyy') as date)")
             )
         )
         .withColumn(
-            "snapshot_at",
+            "snapshot_dt",
             coalesce(
-                to_date(trim(col("snapshot_at")), "yyyy-MM-dd"),
-                to_date(trim(col("snapshot_at")), "dd/MM/yyyy")
+                expr("try_cast(trim(snapshot_dt) as date)"),
+                expr("cast(try_to_timestamp(trim(snapshot_dt), 'dd/MM/yyyy') as date)")
             )
         )
         .withColumn(
@@ -159,6 +159,7 @@ def _build_stage_erp_account_master_snapshot(incr_df: DataFrame, run_id: str) ->
         "silver_processed_ts",
         "silver_processed_date"
     )
+
 
 def _build_unknown_conform_df(spark: SparkSession, run_id: str) -> DataFrame:
     return spark.range(1).select(
@@ -235,6 +236,7 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
         )
     )
 
+
 def _merge_conform_scd2(
         spark: SparkSession,
         conform_table: str,
@@ -242,17 +244,17 @@ def _merge_conform_scd2(
         run_id: str,
         key_columns: list[str],
 ) -> None:
-    
+
     if not key_columns:
         raise ValueError("key_columns must not be empty.")
-    
+
     missing_columns = [c for c in key_columns if c not in incoming_df.columns]
 
     if missing_columns:
         raise ValueError(f"Key columns missing from incoming_df: {missing_columns}")
-    
+
     conform_dt = DeltaTable.forName(spark, conform_table)
-    
+
     unknown_df = _build_unknown_conform_df(spark=spark, run_id=run_id)
 
     (
@@ -268,17 +270,19 @@ def _merge_conform_scd2(
         .select(*key_columns, "record_hash")
     )
 
-    join_condition = " AND ".join([f"inc.{c} = con.{c}" for c in key_columns])
+    join_condition = " AND ".join(
+        [f"inc.{c} <=> con.{c}" for c in key_columns]
+    )
 
     joined_df = incoming_df.alias("inc").join(
         conform_active.alias("con"),
-        on=join_condition,
+        on=expr(join_condition),
         how="left"
     )
 
     changed_df = (
         joined_df
-        .filter(col("con.record_hash").isNotNull() & col("con.record_hash") != col("inc.record_hash"))
+        .filter(col("con.record_hash").isNotNull() & (col("con.record_hash") != col("inc.record_hash")))
         .select("inc.*")
     )
 
@@ -315,7 +319,13 @@ def _merge_conform_scd2(
         .withColumn("updated_at", current_timestamp())
     )
 
-    merge_condition = " AND ".join([*(f"t.{c} = s.{c}" for c in key_columns), "t.is_current = true"])
+    merge_condition = " AND ".join(
+        [
+            *(f"t.{c} <=> s.{c}" for c in key_columns),
+            "t.is_current = true",
+            "s.scd_action = 'UPDATE'"
+        ]
+    )
 
     (
         conform_dt.alias("t")
@@ -332,7 +342,7 @@ def _merge_conform_scd2(
         .whenNotMatchedInsert(
             condition="s.scd_action = 'INSERT'",
             values={
-                "account_id" : "s.accound_id",
+                "account_id": "s.account_id",
                 "customer_name": "s.customer_name",
                 "email": "s.email",
                 "stripe_customer_id": "s.stripe_customer_id",
@@ -360,14 +370,13 @@ def _merge_conform_scd2(
     )
 
 
-
-
 def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
 
     pipeline_name = "silver_erp_account_master_snapshot"
     dataset = "erp_account_master_snapshot"
     run_id = uuid.uuid4().hex
     business_key = ["account_id"]
+    order_columns = ["_ingest_ts", "silver_processed_ts"]
 
     cfg = _build_config(env)
 
@@ -378,6 +387,11 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
     new_wm = None
     dq_result = "OK"
 
+    stage_df = None
+    bad_records = None
+    dedup_df = None
+    incoming_df = None
+
     insert_run_log_start(
         spark=spark,
         run_logs_table=cfg["run_logs_table"],
@@ -385,10 +399,10 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         dataset=dataset,
         target_table=cfg["conform_table"],
         run_id=run_id
-    )   
+    )
 
     try:
-        
+
         logger.info("Silver_erp_account_master_snapshot | run_id=%s.", run_id)
 
         # Read bronze and validate data source
@@ -400,7 +414,7 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
 
         if missing_columns:
             raise ValueError(f"missing required columns: {missing_columns}")
-        
+
         # incremental and handle wms
         incr_df, last_wm, new_wm = read_incremental_by_watermark(
             spark=spark,
@@ -428,7 +442,7 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
         stage_df = _build_stage_erp_account_master_snapshot(
             incr_df=incr_df,
             run_id=run_id,
-        )
+        ).persist()
 
         # dq
 
@@ -452,12 +466,13 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
 
         if dq_result == "FAIL":
             raise ValueError(build_dq_failure_message(dq_metrics))
-        
+
         # quarantination
         bad_records, good_records = quarantine_by_business_key(
             stage_df=stage_df,
             key_columns=business_key
         )
+        bad_records = bad_records.persist()
 
         write_append_table(
             spark=spark,
@@ -468,27 +483,55 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
 
         # deduplication
 
-        order_columns = ["_ingest_ts", "silver_processed_ts"]
         dedup_df = deduplicate_by_business_key(
             df=good_records,
             key_columns=business_key,
             order_columns=order_columns
         )
 
-        rows_in = stage_df.count()
-        rows_out = dedup_df.count()
-        rows_quarantined = bad_records.count()
-
-
         # conform creation
 
-        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
+        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df).persist()
+
+        rows_in = stage_df.count()
+        rows_out = incoming_df.count()
+        rows_quarantined = bad_records.count()
+
+        if rows_out == 0:
+            upsert_watermark(
+                spark=spark,
+                state_table=cfg["state_table"],
+                new_wm=new_wm,
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+            )
+
+            update_run_log_success(
+                spark=spark,
+                run_logs_table=cfg["run_logs_table"],
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+                dq_result=dq_result,
+                rows_in=rows_in,
+                rows_out=rows_out,
+                rows_quarantined=rows_quarantined,
+                last_watermark_ts=last_wm,
+            )
+
+            logger.info(
+                "No valid account rows to merge | run_id=%s",
+                run_id,
+            )
+            return
+
         _merge_conform_scd2(
             spark=spark,
             conform_table=cfg["conform_table"],
             incoming_df=incoming_df,
             run_id=run_id,
-            key_columns=business_key            
+            key_columns=business_key
         )
 
         upsert_watermark(
@@ -513,10 +556,11 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
             last_watermark_ts=last_wm,
         )
 
-        logger.info("Silver erp_account_master_snapshot SUCCESS | row_in=%d | rows_out=%d | rows_quarantined=%d",
-                    rows_in,
-                    rows_out,
-                    rows_quarantined
+        logger.info(
+            "Silver erp_account_master_snapshot SUCCESS | row_in=%d | rows_out=%d | rows_quarantined=%d",
+            rows_in,
+            rows_out,
+            rows_quarantined
         )
 
     except Exception as e:
@@ -526,12 +570,20 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
             pipeline_name=pipeline_name,
             dataset=dataset,
             run_id=run_id,
-            error_msg=e,
+            error_msg=str(e),
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
             dq_result=dq_result,
             last_watermark_ts=last_wm,
         )
-        logger.exception("Silver_erp_account_master_snapshot FAILED")
+        logger.exception("Silver_erp_account_master_snapshot FAILED | run_id=%s.", run_id)
         raise
+
+    finally:
+        for cached_df in (stage_df, bad_records, incoming_df):
+            if cached_df is not None:
+                try:
+                    cached_df.unpersist()
+                except Exception as e:
+                    logger.warning("Failed to unpersist cached DataFrame: %s | run_id=%s", e, run_id)

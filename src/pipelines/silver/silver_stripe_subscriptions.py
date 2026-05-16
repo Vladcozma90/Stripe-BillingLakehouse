@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import uuid
 import logging
 from datetime import datetime
@@ -10,13 +11,12 @@ from pyspark.sql.functions import (
     lit,
     trim,
     lower,
-    to_timestamp,
-    from_unixtime,
     current_timestamp,
     current_date,
     sha2,
     concat_ws,
-    coalesce
+    coalesce,
+    expr,
 )
 
 from src.services.envs import EnvConfig
@@ -27,13 +27,19 @@ from src.services.audit import (
     update_run_log_failure
 )
 from src.services.watermark import read_incremental_by_watermark, upsert_watermark
-from src.services.dq import evaluate_dq_rules, build_dq_results_df, build_dq_failure_message, quarantine_by_business_key
+from src.services.dq import (
+    evaluate_dq_rules,
+    build_dq_results_df,
+    build_dq_failure_message,
+    quarantine_by_business_key
+)
 from src.services.delta_table import write_append_table
 from src.services.transformations import deduplicate_by_business_key
 
 logger = logging.getLogger(__name__)
 
-def _build_config(spark: SparkSession, env: EnvConfig) -> dict[str, str]:
+
+def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
         "state_table": f"{env.catalog}.{env.schemas['ops']}.pipeline_state",
@@ -47,6 +53,7 @@ def _build_config(spark: SparkSession, env: EnvConfig) -> dict[str, str]:
         "conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscriptions/s_conform_stripe_subscriptions",
     }
 
+
 def _get_required_columns() -> list[str]:
     return [
         "_extracted_at",
@@ -58,27 +65,61 @@ def _get_required_columns() -> list[str]:
         "_landing_format",
     ]
 
+
 def _build_stage_stripe_subscriptions(incr_df: DataFrame, run_id: str) -> DataFrame:
     df = (
         incr_df
-        .withColumn("subscription_id", lower(col("data.id")).cast("string"))
-        .withColumn("stripe_customer_id", lower(col("data.customer")).cast("string"))
-        .withColumn("subscription_status", lower(col("data.status")).cast("string"))
-        .withColumn("collection_method", lower(col("collection_method")).cast("string"))
+        .withColumn("subscription_id", lower(trim(col("data.id"))).cast("string"))
+        .withColumn("stripe_customer_id", lower(trim(col("data.customer"))).cast("string"))
+        .withColumn("subscription_status", lower(trim(col("data.status"))).cast("string"))
+        .withColumn("collection_method", lower(trim(col("data.collection_method"))).cast("string"))
         .withColumn("currency", lower(trim(col("data.currency"))).cast("string"))
         .withColumn("latest_invoice_id", col("data.latest_invoice").cast("string"))
 
-        .withColumn("created_ts", to_timestamp(from_unixtime(col("data.created"))))
-        .withColumn("start_date_ts", to_timestamp(from_unixtime(col("data.start_date"))))
-        .withColumn("billing_cycle_anchor_ts", to_timestamp(from_unixtime(col("data.billing_cycle_anchor"))))
-        .withColumn("cancel_at_ts", to_timestamp(from_unixtime(col("data.cancel_at"))))
-        .withColumn("canceled_at_ts", to_timestamp(from_unixtime(col("data.canceled_at"))))
-        .withColumn("trial_start_ts", to_timestamp(from_unixtime(col("data.trial_start"))))
-        .withColumn("trial_end_ts", to_timestamp(from_unixtime(col("data.trial_end"))))
+        .withColumn(
+            "created_ts",
+            expr("try_cast(from_unixtime(cast(data.created as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "start_date_ts",
+            expr("try_cast(from_unixtime(cast(data.start_date as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "billing_cycle_anchor_ts",
+            expr("try_cast(from_unixtime(cast(data.billing_cycle_anchor as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "cancel_at_ts",
+            expr("try_cast(from_unixtime(cast(data.cancel_at as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "canceled_at_ts",
+            expr("try_cast(from_unixtime(cast(data.canceled_at as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "ended_at_ts",
+            expr("try_cast(from_unixtime(cast(data.ended_at as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "trial_start_ts",
+            expr("try_cast(from_unixtime(cast(data.trial_start as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "trial_end_ts",
+            expr("try_cast(from_unixtime(cast(data.trial_end as bigint)) as timestamp)")
+        )
         .withColumn("cancel_at_period_end", col("data.cancel_at_period_end").cast("boolean"))
         .withColumn("livemode", col("data.livemode").cast("boolean"))
 
-        .withColumn("api_extracted_ts", to_timestamp(col("_extracted_at")))
+        .withColumn(
+            "api_extracted_ts",
+            coalesce(
+                expr("try_cast(trim(_extracted_at) as timestamp)"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd HH:mm:ss')"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd''T''HH:mm:ss.SSSXXX')"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd''T''HH:mm:ssXXX')")
+            )
+        )
         .withColumn("etl_run_id", lit(run_id))
         .withColumn("silver_processed_ts", current_timestamp())
         .withColumn("silver_processed_date", current_date())
@@ -96,6 +137,7 @@ def _build_stage_stripe_subscriptions(incr_df: DataFrame, run_id: str) -> DataFr
         "billing_cycle_anchor_ts",
         "cancel_at_ts",
         "canceled_at_ts",
+        "ended_at_ts",
         "trial_start_ts",
         "trial_end_ts",
         "cancel_at_period_end",
@@ -104,7 +146,8 @@ def _build_stage_stripe_subscriptions(incr_df: DataFrame, run_id: str) -> DataFr
         "_ingest_ts",
         "_ingest_date",
         "_file_name",
-        "_source_format",
+        "_source",
+        "_landing_format",
         "etl_run_id",
         "silver_processed_ts",
         "silver_processed_date",
@@ -161,6 +204,7 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
         "trial_end_ts",
         "cancel_at_period_end",
         "livemode",
+        "api_extracted_ts",
         "_file_name",
         "_source",
         "_landing_format",
@@ -196,12 +240,13 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
             "trial_end_ts",
             "cancel_at_period_end",
             "livemode",
+            "api_extracted_ts",
             "_file_name",
             "_source",
             "_landing_format",
             "etl_run_id",
             "silver_effective_start_ts",
-            "record_hash"
+            "record_hash",
         )
     )
 
@@ -213,15 +258,15 @@ def _merge_conform_scd2(
         run_id: str,
         key_columns: list[str],
 ) -> None:
-    
+
     if not key_columns:
         raise ValueError("key_columns must not be empty.")
-    
+
     missing_columns = [c for c in key_columns if c not in incoming_df.columns]
 
     if missing_columns:
         raise ValueError(f"key columns missing from incoming_df: {missing_columns}")
-    
+
     conform_dt = DeltaTable.forName(spark, conform_table)
 
     unknown_df = _build_unknown_df(spark=spark, run_id=run_id)
@@ -239,12 +284,11 @@ def _merge_conform_scd2(
         .select(*key_columns, "record_hash")
     )
 
-    join_condition = " AND ".join([f"inc.{c} = con.{c}" for c in key_columns])
-
+    join_condition = " AND ".join([f"inc.{c} <=> con.{c}" for c in key_columns])
 
     joined_df = incoming_df.alias("inc").join(
         conform_active.alias("con"),
-        on=join_condition,
+        on=expr(join_condition),
         how="left"
     )
 
@@ -275,7 +319,13 @@ def _merge_conform_scd2(
         .withColumn("updated_at", current_timestamp())
     )
 
-    merge_condition = " AND ".join([*(f"t.{c} = s.{c}" for c in key_columns), "t.is_current = true"])
+    merge_condition = " AND ".join(
+        [
+            *(f"t.{c} <=> s.{c}" for c in key_columns),
+            "t.is_current = true",
+            "s.scd_action = 'UPDATE'",
+        ]
+    )
 
     (
         conform_dt.alias("t")
@@ -283,7 +333,7 @@ def _merge_conform_scd2(
         .whenMatchedUpdate(
             condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
             set={
-                "silver_effective_end_ts" : "s.silver_effective_start_ts",
+                "silver_effective_end_ts": "s.silver_effective_start_ts",
                 "updated_at": "s.updated_at",
                 "is_current": "false",
                 "etl_run_id": "s.etl_run_id"
@@ -300,7 +350,7 @@ def _merge_conform_scd2(
                 "latest_invoice_id": "s.latest_invoice_id",
                 "created_ts": "s.created_ts",
                 "start_date_ts": "s.start_date_ts",
-                "billing_cycle_anchor_ts" : "s.billing_cycle_anchor_ts",
+                "billing_cycle_anchor_ts": "s.billing_cycle_anchor_ts",
                 "cancel_at_ts": "s.cancel_at_ts",
                 "canceled_at_ts": "s.canceled_at_ts",
                 "ended_at_ts": "s.ended_at_ts",
@@ -308,12 +358,14 @@ def _merge_conform_scd2(
                 "trial_end_ts": "s.trial_end_ts",
                 "cancel_at_period_end": "s.cancel_at_period_end",
                 "livemode": "s.livemode",
+                "api_extracted_ts": "s.api_extracted_ts",
                 "_file_name": "s._file_name",
                 "_source": "s._source",
                 "_landing_format": "s._landing_format",
                 "etl_run_id": "s.etl_run_id",
                 "silver_effective_start_ts": "s.silver_effective_start_ts",
                 "silver_effective_end_ts": "s.silver_effective_end_ts",
+                "updated_at": "s.updated_at",
                 "record_hash": "s.record_hash",
                 "is_current": "s.is_current"
             }
@@ -321,16 +373,13 @@ def _merge_conform_scd2(
         .execute()
     )
 
-    
-
-
 
 def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
     pipeline_name = "silver_stripe_subscriptions"
     dataset = "stripe_subscriptions"
     run_id = uuid.uuid4().hex
 
-    cfg = _build_config(spark=spark, env=env)
+    cfg = _build_config(env=env)
 
     rows_in = 0
     rows_out = 0
@@ -341,6 +390,11 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
 
     business_key = ["subscription_id"]
     order_columns = ["_ingest_ts", "silver_processed_ts"]
+
+    stage_df = None
+    bad_records = None
+    dedup_df = None
+    incoming_df = None
 
     insert_run_log_start(
         spark=spark,
@@ -354,7 +408,7 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
     try:
 
         logger.info("Silver stripe_subscriptions start | run_id=%s", run_id)
-        
+
         # Read bronze and validate data source
         bronze_df = spark.read.format("delta").load(cfg["bronze_path"])
 
@@ -385,11 +439,11 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             )
             logger.info("No new data. Exiting.")
             return
-        
+
         stage_df = _build_stage_stripe_subscriptions(
             incr_df=incr_df,
             run_id=run_id
-        )
+        ).persist()
 
         # dq
 
@@ -413,7 +467,6 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
 
         if dq_result == "FAIL":
             raise ValueError(build_dq_failure_message(dq_metrics))
-        
 
         # quarantination
 
@@ -422,13 +475,14 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             key_columns=business_key,
         )
 
+        bad_records = bad_records.persist()
+
         write_append_table(
             spark=spark,
             df=bad_records,
             table_name=cfg["quarantine_table"],
             table_path=cfg["quarantine_path"],
         )
-        
 
         # deduplication
 
@@ -436,16 +490,44 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             df=good_records,
             key_columns=business_key,
             order_columns=order_columns,
-        )
+        ).persist()
 
         rows_in = stage_df.count()
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
 
-
         # conform creation
 
-        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df)
+        incoming_df = _build_incoming_conform_df(dedup_df=dedup_df).persist()
+
+        if rows_out == 0:
+            upsert_watermark(
+                spark=spark,
+                state_table=cfg["state_table"],
+                new_wm=new_wm,
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+            )
+
+            update_run_log_success(
+                spark=spark,
+                run_logs_table=cfg["run_logs_table"],
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+                dq_result=dq_result,
+                rows_in=rows_in,
+                rows_out=rows_out,
+                rows_quarantined=rows_quarantined,
+                last_watermark_ts=last_wm,
+            )
+
+            logger.info(
+                "No valid subscription rows to merge | run_id=%s",
+                run_id,
+            )
+            return
 
         _merge_conform_scd2(
             spark=spark,
@@ -463,7 +545,7 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             dataset=dataset,
             run_id=run_id,
         )
-        
+
         update_run_log_success(
             spark=spark,
             run_logs_table=cfg["run_logs_table"],
@@ -477,11 +559,12 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             last_watermark_ts=last_wm,
         )
 
-        logger.info("Silver stripe_subscriptions | rows_in = %d | rows_out = %d | rows_quarantined =%d",
-                    rows_in,
-                    rows_out,
-                    rows_quarantined
-                    )
+        logger.info(
+            "Silver stripe_subscriptions SUCCESS | rows_in=%d | rows_out=%d | rows_quarantined=%d",
+            rows_in,
+            rows_out,
+            rows_quarantined
+        )
 
     except Exception as e:
         update_run_log_failure(
@@ -490,7 +573,7 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             pipeline_name=pipeline_name,
             dataset=dataset,
             run_id=run_id,
-            error_msg=e,
+            error_msg=str(e),
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
@@ -498,5 +581,13 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             last_watermark_ts=last_wm,
         )
 
-        logger.exception("Silver strip_customers FAILED")
+        logger.exception("Silver stripe_subscriptions FAILED | run_id=%s", run_id)
         raise
+
+    finally:
+        for cached_df in (stage_df, bad_records, dedup_df, incoming_df):
+            if cached_df is not None:
+                try:
+                    cached_df.unpersist()
+                except Exception as e:
+                    logger.warning("Failed to unpersist cached DataFrame: %s | run_id=%s", e, run_id)

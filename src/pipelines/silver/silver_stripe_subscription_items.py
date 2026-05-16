@@ -1,16 +1,18 @@
 from __future__ import annotations
+
 import uuid
 import logging
+
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
     col,
     lit,
     trim,
     lower,
-    to_timestamp,
-    from_unixtime,
     current_timestamp,
     current_date,
+    expr,
+    coalesce,
 )
 
 from src.services.envs import EnvConfig
@@ -21,7 +23,12 @@ from src.services.audit import (
     update_run_log_failure
 )
 from src.services.watermark import read_incremental_by_watermark, upsert_watermark
-from src.services.dq import evaluate_dq_rules, build_dq_results_df, build_dq_failure_message, quarantine_by_business_key
+from src.services.dq import (
+    evaluate_dq_rules,
+    build_dq_results_df,
+    build_dq_failure_message,
+    quarantine_by_business_key
+)
 from src.services.delta_table import write_append_table
 from src.services.transformations import deduplicate_by_business_key
 from src.services.snapshot import merge_current_snapshot
@@ -49,6 +56,7 @@ def _get_required_columns() -> list[str]:
     return [
         "_extracted_at",
         "data",
+        "_ingest_ts",
         "_ingest_date",
         "_file_name",
         "_source",
@@ -76,12 +84,29 @@ def _build_stage_stripe_subscription_items(incr_df: DataFrame, run_id: str) -> D
         .withColumn("quantity", col("data.quantity").cast("bigint"))
 
         # timestamps
-        .withColumn("item_created_ts", to_timestamp(from_unixtime(col("data.created"))))
-        .withColumn("item_current_period_start_ts", to_timestamp(from_unixtime(col("data.current_period_start"))))
-        .withColumn("item_current_period_end_ts", to_timestamp(from_unixtime(col("data.current_period_end"))))
+        .withColumn(
+            "item_created_ts",
+            expr("try_cast(from_unixtime(cast(data.created as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "item_current_period_start_ts",
+            expr("try_cast(from_unixtime(cast(data.current_period_start as bigint)) as timestamp)")
+        )
+        .withColumn(
+            "item_current_period_end_ts",
+            expr("try_cast(from_unixtime(cast(data.current_period_end as bigint)) as timestamp)")
+        )
 
         # ingestion metadata
-        .withColumn("api_extracted_ts", to_timestamp(col("_extracted_at")))
+        .withColumn(
+            "api_extracted_ts",
+            coalesce(
+                expr("try_cast(trim(_extracted_at) as timestamp)"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd HH:mm:ss')"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd''T''HH:mm:ss.SSSXXX')"),
+                expr("try_to_timestamp(trim(_extracted_at), 'yyyy-MM-dd''T''HH:mm:ssXXX')")
+            )
+        )
         .withColumn("etl_run_id", lit(run_id))
         .withColumn("silver_processed_ts", current_timestamp())
         .withColumn("silver_processed_date", current_date())
@@ -120,8 +145,19 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
 
     cfg = _build_config(env)
 
+    rows_in = 0
+    rows_quarantined = 0
+    rows_out = 0
+    last_wm = None
+    new_wm = None
+    dq_result = "OK"
+
     business_key = ["subscription_item_id"]
     order_columns = ["_ingest_ts", "silver_processed_ts"]
+
+    stage_df = None
+    bad_records = None
+    dedup_df = None
 
     insert_run_log_start(
         spark=spark,
@@ -145,10 +181,11 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
 
         if missing_columns:
             raise ValueError(f"missing required columns: {missing_columns}")
-        
+
         incr_df, last_wm, new_wm = read_incremental_by_watermark(
             spark=spark,
             source_df=bronze_df,
+            state_table=cfg["state_table"],
             pipeline_name=pipeline_name,
             dataset=dataset,
             watermark_col="_ingest_ts",
@@ -165,11 +202,11 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             )
             logger.info("No new data. Exiting.")
             return
-        
+
         stage_df = _build_stage_stripe_subscription_items(
             incr_df=incr_df,
             run_id=run_id
-        )
+        ).persist()
 
         # dq
 
@@ -193,7 +230,7 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
 
         if dq_result == "FAIL":
             raise ValueError(build_dq_failure_message(dq_metrics))
-        
+
         # quarantination
 
         bad_records, good_records = quarantine_by_business_key(
@@ -201,13 +238,14 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             key_columns=business_key,
         )
 
+        bad_records = bad_records.persist()
+
         write_append_table(
             spark=spark,
             df=bad_records,
             table_name=cfg["quarantine_table"],
             table_path=cfg["quarantine_path"],
         )
-        
 
         # deduplication
 
@@ -215,12 +253,40 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             df=good_records,
             key_columns=business_key,
             order_columns=order_columns,
-        )
+        ).persist()
 
         rows_in = stage_df.count()
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
 
+        if rows_out == 0:
+            upsert_watermark(
+                spark=spark,
+                state_table=cfg["state_table"],
+                new_wm=new_wm,
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+            )
+
+            update_run_log_success(
+                spark=spark,
+                run_logs_table=cfg["run_logs_table"],
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+                dq_result=dq_result,
+                rows_in=rows_in,
+                rows_out=rows_out,
+                rows_quarantined=rows_quarantined,
+                last_watermark_ts=last_wm,
+            )
+
+            logger.info(
+                "No valid subscription item rows to merge | run_id=%s",
+                run_id,
+            )
+            return
 
         # current creation
 
@@ -239,7 +305,7 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             dataset=dataset,
             run_id=run_id,
         )
-        
+
         update_run_log_success(
             spark=spark,
             run_logs_table=cfg["run_logs_table"],
@@ -253,11 +319,12 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             last_watermark_ts=last_wm,
         )
 
-        logger.info("Silver stripe_subscription_items | rows_in = %d | rows_out = %d | rows_quarantined =%d",
-                    rows_in,
-                    rows_out,
-                    rows_quarantined
-                    )
+        logger.info(
+            "Silver stripe_subscription_items SUCCESS | rows_in=%d | rows_out=%d | rows_quarantined=%d",
+            rows_in,
+            rows_out,
+            rows_quarantined
+        )
 
     except Exception as e:
         update_run_log_failure(
@@ -266,7 +333,7 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             pipeline_name=pipeline_name,
             dataset=dataset,
             run_id=run_id,
-            error_msg=e,
+            error_msg=str(e),
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
@@ -274,5 +341,13 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
             last_watermark_ts=last_wm,
         )
 
-        logger.exception("Silver stripe_subscription_items FAILED")
+        logger.exception("Silver stripe_subscription_items FAILED | run_id=%s", run_id)
         raise
+
+    finally:
+        for cached_df in (stage_df, bad_records, dedup_df):
+            if cached_df is not None:
+                try:
+                    cached_df.unpersist()
+                except Exception as e:
+                    logger.warning("Failed to unpersist cached DataFrame: %s | run_id=%s", e, run_id)

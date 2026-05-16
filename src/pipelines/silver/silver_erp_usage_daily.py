@@ -2,7 +2,18 @@ import uuid
 import logging
 
 from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import (col, lit, lower, upper, trim, coalesce, to_date, current_timestamp, current_date)
+from pyspark.sql.functions import (
+    col,
+    lit,
+    lower,
+    upper,
+    trim,
+    coalesce,
+    current_timestamp,
+    current_date,
+    expr,
+)
+
 from src.services.envs import EnvConfig
 from src.services.watermark import read_incremental_by_watermark, upsert_watermark
 from src.services.audit import (
@@ -12,7 +23,12 @@ from src.services.audit import (
     update_run_log_failure
 )
 from src.services.delta_table import write_append_table
-from src.services.dq import evaluate_dq_rules, build_dq_results_df, build_dq_failure_message, quarantine_by_business_key
+from src.services.dq import (
+    evaluate_dq_rules,
+    build_dq_results_df,
+    build_dq_failure_message,
+    quarantine_by_business_key
+)
 from src.services.snapshot import merge_current_snapshot
 from src.services.transformations import deduplicate_by_business_key
 
@@ -33,6 +49,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "current_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_usage_daily/s_current_erp_usage_daily",
     }
 
+
 def _get_required_cols() -> list:
     return [
         "usage_id",
@@ -51,15 +68,27 @@ def _get_required_cols() -> list:
         "_landing_format"
     ]
 
+
 def _build_stage_silver_erp_usage_daily(incr_df: DataFrame, run_id: str) -> DataFrame:
     df = (
         incr_df
         .withColumn("usage_id", lower(trim(col("usage_id"))).cast("string"))
-        .withColumn("event_ts", col("event_ts").cast("timestamp"))
-        .withColumn("usage_date", coalesce(
-            to_date(trim(col("usage_date")), "yyyy-MM-dd"),
-            to_date(trim(col("usage_date")), "dd-MM-yyyy"))
+        .withColumn(
+            "event_ts",
+            coalesce(
+                expr("try_cast(trim(event_ts) as timestamp)"),
+                expr("try_to_timestamp(trim(event_ts), 'dd/MM/yyyy HH:mm:ss')"),
+                expr("try_to_timestamp(trim(event_ts), 'dd-MM-yyyy HH:mm:ss')")
             )
+        )
+        .withColumn(
+            "usage_date",
+            coalesce(
+                expr("try_cast(trim(usage_date) as date)"),
+                expr("cast(try_to_timestamp(trim(usage_date), 'dd/MM/yyyy') as date)"),
+                expr("cast(try_to_timestamp(trim(usage_date), 'dd-MM-yyyy') as date)")
+            )
+        )
         .withColumn("account_id", trim(col("account_id")).cast("string"))
         .withColumn("feature_code", lower(trim(col("feature_code"))).cast("string"))
         .withColumn("active_users", col("active_users").cast("int"))
@@ -98,7 +127,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
     dataset = "erp_usage_daily"
     run_id = uuid.uuid4().hex
     business_key = ["usage_id"]
-    
+
     cfg = _build_config(env=env)
 
     rows_in = 0
@@ -108,17 +137,22 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
     new_wm = None
     dq_result = "OK"
 
+    stage_df = None
+    bad_records = None
+    dedup_df = None
+
     insert_run_log_start(
         spark=spark,
         run_logs_table=cfg["run_logs_table"],
         pipeline_name=pipeline_name,
         dataset=dataset,
-        target_table=cfg["current_table"]
+        target_table=cfg["current_table"],
+        run_id=run_id,
     )
 
     try:
 
-        logger.info("Silver erp_usage_daily | run_id =%s", run_id)
+        logger.info("Silver erp_usage_daily | run_id=%s", run_id)
 
         bronze_df = spark.read.format("delta").load(cfg["bronze_path"])
 
@@ -149,14 +183,12 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             )
             logger.info("No new data. Exiting")
             return
-        
 
         # staging
         stage_df = _build_stage_silver_erp_usage_daily(
             incr_df=incr_df,
             run_id=run_id,
-        )
-
+        ).persist()
 
         # dq
 
@@ -180,13 +212,14 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
         if dq_result == "FAIL":
             raise ValueError(build_dq_failure_message(dq_metrics))
-        
 
         # quarantination
         bad_records, good_records = quarantine_by_business_key(
             stage_df=stage_df,
             key_columns=business_key
         )
+
+        bad_records = bad_records.persist()
 
         write_append_table(
             spark=spark,
@@ -201,11 +234,40 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             df=good_records,
             key_columns=business_key,
             order_columns=order_columns
-        )
+        ).persist()
 
         rows_in = stage_df.count()
         rows_out = dedup_df.count()
         rows_quarantined = bad_records.count()
+
+        if rows_out == 0:
+            upsert_watermark(
+                spark=spark,
+                state_table=cfg["state_table"],
+                new_wm=new_wm,
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+            )
+
+            update_run_log_success(
+                spark=spark,
+                run_logs_table=cfg["run_logs_table"],
+                pipeline_name=pipeline_name,
+                dataset=dataset,
+                run_id=run_id,
+                dq_result=dq_result,
+                rows_in=rows_in,
+                rows_out=rows_out,
+                rows_quarantined=rows_quarantined,
+                last_watermark_ts=last_wm,
+            )
+
+            logger.info(
+                "No valid usage rows to merge | run_id=%s",
+                run_id,
+            )
+            return
 
         # current creation
 
@@ -215,7 +277,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             df=dedup_df,
             key_columns=business_key
         )
-        
+
         upsert_watermark(
             spark=spark,
             state_table=cfg["state_table"],
@@ -235,7 +297,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             rows_in=rows_in,
             rows_out=rows_out,
             rows_quarantined=rows_quarantined,
-            last_watermark_ts=new_wm,
+            last_watermark_ts=last_wm,
         )
 
         logger.info(
@@ -243,8 +305,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             rows_in,
             rows_out,
             rows_quarantined
-            )       
-
+        )
 
     except Exception as e:
         update_run_log_failure(
@@ -260,5 +321,13 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             dq_result=dq_result,
             last_watermark_ts=last_wm,
         )
-        logger.info("Silver erp_usage_daily FAILED")
+        logger.exception("Silver erp_usage_daily FAILED | run_id=%s", run_id)
         raise
+
+    finally:
+        for cached_df in (stage_df, bad_records, dedup_df):
+            if cached_df is not None:
+                try:
+                    cached_df.unpersist()
+                except Exception as e:
+                    logger.warning("Failed to unpersist cached DataFrame: %s | run_id=%s", e, run_id)
