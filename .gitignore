@@ -4,6 +4,7 @@ logs/
 config/
 .venv/
 test_dags/
+archive/
 # Python build artifacts
 *.egg-info/
 dist/

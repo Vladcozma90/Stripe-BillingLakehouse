@@ -98,30 +98,35 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
 
     logger.info("Creating/validating erp_usage_daily in schema %s", f"{env.catalog}.{env.schemas['gold']}")
-
+    
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (
-                usage_id STRING,
-                account_master_snapshot_sk BIGINT,
-                plan_catalog_sk BIGINT,
-                event_ts TIMESTAMP,
-                f.usage_date DATE,
-                account_id STRING,
-                feature_code STRING,
-                active_users BIGINT,
-                units_raw BIGINT,
-                source_system STRING,
-                batch_id STRING,
-                _file_name STRING,
-                _source STRING,
-                _landing_format STRING,
-                etl_run_id STRING,
-                gold_loaded_ts TIMESTAMP,
-                gold_loaded_date DATE
+                    usage_business_key STRING NOT NULL,
+                    usage_id STRING,
+
+                    customer_sk BIGINT,
+                    plan_sk BIGINT,
+
+                    account_id STRING,
+                    stripe_customer_id STRING,
+                    plan_code STRING,
+
+                    event_ts TIMESTAMP,
+                    usage_date DATE,
+                    feature_code STRING,
+                    active_users BIGINT,
+                    units_raw BIGINT,
+                    source_system STRING,
+                    batch_id STRING,
+
+                    etl_run_id STRING,
+                    gold_processed_ts TIMESTAMP,
+                    gold_processed_date DATE,
+                    record_hash STRING
                 )
                 USING DELTA
                 LOCATION '{cfg["gold_path"]}'
-            """)
+                """)
 
 
 

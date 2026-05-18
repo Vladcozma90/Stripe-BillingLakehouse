@@ -18,6 +18,7 @@ from bootstrap.bootstrap_stripe_customers import bootstrap_stripe_customers
 from bootstrap.bootstrap_stripe_invoices import bootstrap_stripe_invoices
 from bootstrap.bootstrap_stripe_subscription_items import bootstrap_subscription_items
 from bootstrap.bootstrap_stripe_subscriptions import bootstrap_stripe_subscriptions
+from bootstrap.bootstrap_dim_customer import bootstrap_dim_customer
 
 
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ def job_run_bootstrap() -> None:
         ("bootstrap_stripe_invoices", bootstrap_stripe_invoices),
         ("bootstrap_stripe_subscription_items", bootstrap_subscription_items),
         ("bootstrap_stripe_subscriptions", bootstrap_stripe_subscriptions),
+        ("bootstrap_dim_customer", bootstrap_dim_customer),
     ]
 
     try:
