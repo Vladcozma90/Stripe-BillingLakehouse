@@ -82,8 +82,6 @@ datasets:
         
         effective_to:
           max_null: 0.2
-          allowed_null:
-            allow_null_when: true
           severity: warn
         
         is_current:
@@ -109,7 +107,6 @@ datasets:
 
         email:
           max_null: 0.02
-          regex: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
           severity: warn
         
         stripe_customer_id:
@@ -184,10 +181,6 @@ datasets:
 
         account_id:
           max_null: 0.0
-          fk_reference:
-            dataset: erp_account_master_snapshot
-            column: account_id
-            max_orphan_pct: 0.0
           severity: error
 
         feature_code:

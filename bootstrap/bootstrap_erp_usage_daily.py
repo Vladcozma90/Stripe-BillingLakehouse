@@ -10,12 +10,10 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_erp_usage_daily",
         "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_erp_usage_daily",
         "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_erp_usage_daily",
-        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_usage_daily",
 
         "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_usage_daily/s_dq_erp_usage_daily",
         "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_usage_daily/s_quarantine_erp_usage_daily",
         "silver_current_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_erp_usage_daily/s_current_erp_usage_daily",
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_usage_daily",
     }
 
 
@@ -95,59 +93,3 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
                 LOCATION '{cfg["silver_current_path"]}'
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_current_table"]}")
-
-
-    logger.info("Creating/validating erp_usage_daily in schema %s", f"{env.catalog}.{env.schemas['gold']}")
-    
-    spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["gold_fact_table"]} (
-                    invoice_business_key STRING NOT NULL,
-                    invoice_id STRING,
-
-                    subscription_sk BIGINT,
-                    customer_sk BIGINT,
-                    plan_sk BIGINT,
-
-                    stripe_customer_id STRING,
-                    subscription_id STRING,
-                    account_id STRING,
-                    plan_code STRING,
-
-                    invoice_status STRING,
-                    collection_method STRING,
-                    currency STRING,
-                    invoice_number STRING,
-
-                    amount_due BIGINT,
-                    amount_paid BIGINT,
-                    amount_remaining BIGINT,
-                    subtotal BIGINT,
-                    subtotal_excluding_tax BIGINT,
-                    total BIGINT,
-
-                    attempt_count BIGINT,
-                    is_attempted BOOLEAN,
-                    is_livemode BOOLEAN,
-                    auto_advance BOOLEAN,
-
-                    created_ts TIMESTAMP,
-                    due_date_ts TIMESTAMP,
-                    period_start_ts TIMESTAMP,
-                    period_end_ts TIMESTAMP,
-                    status_finalized_ts TIMESTAMP,
-                    status_paid_ts TIMESTAMP,
-                    status_voided_ts TIMESTAMP,
-                    status_marked_uncollectible_ts TIMESTAMP,
-                    api_extracted_ts TIMESTAMP,
-
-                    etl_run_id STRING,
-                    gold_processed_ts TIMESTAMP,
-                    gold_processed_date DATE,
-                    record_hash STRING
-                )
-                USING DELTA
-                LOCATION '{cfg["gold_fact_path"]}'
-                """)
-
-
-

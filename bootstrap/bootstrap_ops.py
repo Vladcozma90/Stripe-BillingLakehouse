@@ -10,10 +10,10 @@ def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> None:
     ops_schema = f"{env.catalog}.{env.schemas['ops']}"
 
     ops = {
-        "run_logs_table" : f"{env.catalog}.{ops_schema}.run_logs",
+        "run_logs_table" : f"{env.catalog}.{env.schemas['ops']}.run_logs",
         "run_logs_path" : f"{env.ops_base_path}/{env.catalog}/{env.schemas['ops']}/run_logs",
 
-        "state_table" : f"{env.catalog}.{ops_schema}.pipeline_state",
+        "state_table" : f"{env.catalog}.{env.schemas['ops']}.pipeline_state",
         "state_path" : f"{env.ops_base_path}/{env.catalog}/{env.schemas['ops']}/pipeline_state",
     }
     logger.info("Creating/validating OPS tables in schema %s", ops_schema)
@@ -58,7 +58,7 @@ def bootstrap_ops(spark: SparkSession, env: EnvConfig) -> None:
     for t in (ops["run_logs_table"], ops["state_table"]):
         spark.sql(f"""
                     ALTER TABLE {t}
-                    SET TBLPROPRIETIES(
+                    SET TBLPROPERTIES(
                     delta.autoOptimize.optimizeWrite = 'true',
                     delta.autoOptimize.autoCompact = 'true'
                     )

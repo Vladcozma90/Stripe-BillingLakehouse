@@ -36,11 +36,11 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
 
         "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_erp_usage_daily",
 
-        "gold_dim_customer_table": f"{env.catalog}.{env.schemas['gold']}.dim_customer",
-        "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.dim_plan_catalog",
+        "gold_dim_customer_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customer",
+        "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
-        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.fact_usage_daily",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/fact_usage_daily",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_usage_daily",
+        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_usage_daily",
     }
 
 

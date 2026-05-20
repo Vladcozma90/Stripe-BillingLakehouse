@@ -10,12 +10,10 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_customers",
         "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_customers",
         "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
-        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_customers",
 
         "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_dq_stripe_customers",
         "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_quarantine_stripe_customers",
         "silver_conform_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_customers/s_conform_stripe_customers",
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_stripe_customers"
     }
 
 

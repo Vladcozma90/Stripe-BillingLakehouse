@@ -33,9 +33,9 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
         "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_subscriptions",
-        "gold_table": f"{env.catalog}.{env.schemas['gold']}.dim_subscription",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_subscriptions",
 
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/dim_subscription",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_subscriptions",
     }
 
 
@@ -228,9 +228,9 @@ def _merge_gold_dim_subscriptions(
     )
 
 
-def run_gold_dim_subscription(spark: SparkSession, env: EnvConfig) -> None:
-    pipeline_name = "gold_dim_subscription"
-    dataset = "dim_subscription"
+def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
+    pipeline_name = "gold_dim_subscriptions"
+    dataset = "dim_subscriptions"
     run_id = uuid.uuid4().hex
 
     cfg = _build_config(env)
@@ -252,7 +252,7 @@ def run_gold_dim_subscription(spark: SparkSession, env: EnvConfig) -> None:
     )
 
     try:
-        logger.info("Gold dim_subscription start | run_id=%s", run_id)
+        logger.info("Gold dim_subscriptions start | run_id=%s", run_id)
 
         silver_conform_df = spark.table(cfg["silver_conform_table"])
 
