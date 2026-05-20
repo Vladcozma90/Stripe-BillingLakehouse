@@ -30,8 +30,8 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "silver_account_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_account_master_snapshot",
         "silver_stripe_customer_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
 
-        "gold_customer_table": f"{env.catalog}.{env.schemas['gold']}.dim_customer",
-        "gold_customer_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/dim_customer",
+        "gold_customer_table": f"{env.catalog}.{env.schemas['gold']}.dim_customers",
+        "gold_customer_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/dim_customers",
     }
 
 
@@ -303,8 +303,8 @@ def _merge_gold_dim_customer(
 
 
 def run_gold_dim_customer(spark: SparkSession, env: EnvConfig) -> None:
-    pipeline_name = "gold_dim_customer"
-    dataset = "dim_customer"
+    pipeline_name = "gold_dim_customers"
+    dataset = "dim_customers"
     run_id = uuid.uuid4().hex
 
     cfg = _build_config(env)

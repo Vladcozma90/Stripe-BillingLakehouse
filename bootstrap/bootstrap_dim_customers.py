@@ -6,17 +6,17 @@ logger = logging.getLogger(__name__)
 
 def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
-        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customer",
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
 
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_customer",
+        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_customers",
     }
 
 
-def bootstrap_dim_customer(spark: SparkSession, env: EnvConfig) -> None:
+def bootstrap_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
 
     cfg = _build_config(env=env)
 
-    logger.info("Creating/validating dim_customer in schema %s", f"{env.catalog}.{env.schemas['gold']}")
+    logger.info("Creating/validating dim_customers in schema %s", f"{env.catalog}.{env.schemas['gold']}")
 
     spark.sql(f"""
             CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (
