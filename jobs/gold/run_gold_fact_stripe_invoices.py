@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import os
 from pyspark.sql import SparkSession
-from src.pipelines.gold.gold_fact_stripe_invoices import run_gold_fact_invoices
+from pipelines.gold.gold_fact_invoices import run_gold_fact_invoices
 from src.services.envs import load_envs
 from src.services.logger import setup_log
 

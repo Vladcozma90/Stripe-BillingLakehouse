@@ -10,7 +10,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "silver_dq_table": f"{env.catalog}.{env.schemas['silver']}.s_dq_stripe_subscription_items",
         "silver_quarantine_table": f"{env.catalog}.{env.schemas['silver']}.s_quarantine_stripe_subscription_items",
         "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_subscription_items",
-        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_subscription_items",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_subscription_items",
 
         "silver_dq_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscription_items/s_dq_stripe_subscription_items",
         "silver_quarantine_path": f"{env.silver_base_path}/{env.catalog}/{env.schemas['silver']}/s_stripe_subscription_items/s_quarantine_stripe_subscription_items",
@@ -105,3 +105,44 @@ def bootstrap_subscription_items(spark: SparkSession, env: EnvConfig) -> None:
                 LOCATION '{cfg["silver_current_path"]}'
             """)
     logger.info("Ensure table exists: %s", f"{cfg["silver_current_table"]}")
+
+
+    logger.info("Creating/validating stripe_subscription_items in schema %s", f"{env.catalog}.{env.schemas['gold']}")
+
+    spark.sql(f"""
+                CREATE TABLE IF NOT EXIST {cfg["gold_fact_table"]} (
+                    subscription_item_business_key STRING NOT NULL,
+                    subscription_item_id STRING,
+
+                    subscription_sk BIGINT,
+                    customer_sk BIGINT,
+                    plan_sk BIGINT,
+
+                    subscription_id STRING,
+                    stripe_customer_id STRING,
+                    account_id STRING,
+                    plan_code STRING,
+
+                    price_id STRING,
+                    product_id STRING,
+                    item_currency STRING,
+                    billing_interval STRING,
+                    price_type STRING,
+                    usage_type STRING,
+
+                    quantity BIGINT,
+                    unit_amount BIGINT,
+
+                    item_created_ts TIMESTAMP,
+                    item_current_period_start_ts TIMESTAMP,
+                    item_current_period_end_ts TIMESTAMP,
+                    api_extracted_ts TIMESTAMP,
+
+                    etl_run_id STRING,
+                    gold_processed_ts TIMESTAMP,
+                    gold_processed_date DATE,
+                    record_hash STRING
+                )
+                USING DELTA
+                LOCATION '{cfg["gold_path"]}'
+                """)

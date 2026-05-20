@@ -100,24 +100,45 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
     logger.info("Creating/validating erp_usage_daily in schema %s", f"{env.catalog}.{env.schemas['gold']}")
     
     spark.sql(f"""
-                CREATE TABLE IF NOT EXISTS {cfg["gold_table"]} (
-                    usage_business_key STRING NOT NULL,
-                    usage_id STRING,
+                CREATE TABLE IF NOT EXISTS {cfg["gold_fact_table"]} (
+                    invoice_business_key STRING NOT NULL,
+                    invoice_id STRING,
 
+                    subscription_sk BIGINT,
                     customer_sk BIGINT,
                     plan_sk BIGINT,
 
-                    account_id STRING,
                     stripe_customer_id STRING,
+                    subscription_id STRING,
+                    account_id STRING,
                     plan_code STRING,
 
-                    event_ts TIMESTAMP,
-                    usage_date DATE,
-                    feature_code STRING,
-                    active_users BIGINT,
-                    units_raw BIGINT,
-                    source_system STRING,
-                    batch_id STRING,
+                    invoice_status STRING,
+                    collection_method STRING,
+                    currency STRING,
+                    invoice_number STRING,
+
+                    amount_due BIGINT,
+                    amount_paid BIGINT,
+                    amount_remaining BIGINT,
+                    subtotal BIGINT,
+                    subtotal_excluding_tax BIGINT,
+                    total BIGINT,
+
+                    attempt_count BIGINT,
+                    is_attempted BOOLEAN,
+                    is_livemode BOOLEAN,
+                    auto_advance BOOLEAN,
+
+                    created_ts TIMESTAMP,
+                    due_date_ts TIMESTAMP,
+                    period_start_ts TIMESTAMP,
+                    period_end_ts TIMESTAMP,
+                    status_finalized_ts TIMESTAMP,
+                    status_paid_ts TIMESTAMP,
+                    status_voided_ts TIMESTAMP,
+                    status_marked_uncollectible_ts TIMESTAMP,
+                    api_extracted_ts TIMESTAMP,
 
                     etl_run_id STRING,
                     gold_processed_ts TIMESTAMP,
@@ -125,7 +146,7 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
                     record_hash STRING
                 )
                 USING DELTA
-                LOCATION '{cfg["gold_path"]}'
+                LOCATION '{cfg["gold_fact_path"]}'
                 """)
 
 
