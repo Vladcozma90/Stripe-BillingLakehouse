@@ -280,7 +280,7 @@ def _merge_conform_scd2(
 
     conform_active = (
         conform_dt.toDF()
-        .filter(col("is_current"))
+        .filter(col("is_current") == lit(True))
         .select(*key_columns, "record_hash")
     )
 

@@ -73,7 +73,6 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
     
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
-                stripe_customers_sk BIGINT GENERATED ALWAYS AS IDENTITY,
                 stripe_customer_id STRING,
                 email STRING,
                 currency STRING,

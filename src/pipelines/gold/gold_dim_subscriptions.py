@@ -155,6 +155,9 @@ def _build_gold_dim_subscriptions(
         )
     )
 
+def _build_unknown_gold_dim_subscriptions(spark: SparkSession) -> DataFrame:
+    return spark.range(1).select(
+        lit(-1).cast("bigint").alias("subscription_sk"))
 
 def _merge_gold_dim_subscriptions(
     spark: SparkSession,
@@ -162,6 +165,15 @@ def _merge_gold_dim_subscriptions(
     source_df: DataFrame,
 ) -> None:
     target_dt = DeltaTable.forName(spark, target_table)
+
+    unknown_df = _build_unknown_gold_dim_subscriptions(spark=spark)
+
+    (
+        target_dt.alias("t")
+            .merge(unknown_df.alias("s"), "t.subscription_sk = s.subscription_sk")
+            .whenNotMatchedInsertAll()
+            .execute()
+    )
 
     merge_condition = "t.subscription_business_key <=> s.subscription_business_key"
 

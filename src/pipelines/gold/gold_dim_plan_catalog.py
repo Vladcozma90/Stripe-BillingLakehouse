@@ -131,6 +131,10 @@ def _build_gold_dim_plan_catalog(
         )
     )
 
+def _build_unknown_gold_dim_plan_catalog(spark: SparkSession) -> DataFrame:
+    return spark.range(1).select(
+        lit(-1).cast("bigint").alias("plan_catalog_sk"))
+
 
 def _merge_gold_dim_plan_catalog(
     spark: SparkSession,
@@ -138,6 +142,15 @@ def _merge_gold_dim_plan_catalog(
     source_df: DataFrame,
 ) -> None:
     target_dt = DeltaTable.forName(spark, target_table)
+
+    unknown_df = _build_unknown_gold_dim_plan_catalog(spark=spark)
+
+    (
+        target_dt.alias("t")
+            .merge(unknown_df.alias("s"), "t.plan_catalog_sk = s.plan_catalog_sk")
+            .whenNotMatchedInsertAll()
+            .execute()
+    )
 
     merge_condition = "t.plan_business_key <=> s.plan_business_key"
 

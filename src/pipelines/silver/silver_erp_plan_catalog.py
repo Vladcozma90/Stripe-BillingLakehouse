@@ -112,9 +112,8 @@ def _build_stage_erp_plan_catalog(incr_df: DataFrame, run_id: str):
     )
 
 
-def _build_unknown_df(spark: SparkSession, run_id: str):
+def _build_unknown_conform_df(spark: SparkSession, run_id: str):
     return spark.range(1).select(
-        lit(-1).cast("bigint").alias("plan_catalog_sk"),
         lit("UNKNOWN").cast("string").alias("plan_code"),
         lit(None).cast("string").alias("plan_name"),
         lit(None).cast("bigint").alias("monthly_price_usd"),
@@ -200,18 +199,18 @@ def _merge_conform_scd2(
 
     conform_dt = DeltaTable.forName(spark, conform_table)
 
-    unknown_df = _build_unknown_df(spark, run_id)
+    unknown_df = _build_unknown_conform_df(spark=spark, run_id=run_id)
 
     (
         conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.plan_catalog_sk = s.plan_catalog_sk")
+        .merge(unknown_df.alias("s"), "t.plan_code = s.plan_code AND t.is_current = true")
         .whenNotMatchedInsertAll()
         .execute()
     )
 
     conform_active = (
         conform_dt.toDF()
-        .filter(col("is_current"))
+        .filter(col("is_current") == lit(True))
         .select(*key_columns, "record_hash")
     )
 

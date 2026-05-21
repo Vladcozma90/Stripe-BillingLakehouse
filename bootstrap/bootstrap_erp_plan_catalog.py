@@ -74,7 +74,6 @@ def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
 
     spark.sql(f"""
                 CREATE TABLE IF NOT EXISTS {cfg["silver_conform_table"]} (
-                    plan_catalog_sk BIGINT GENERATED ALWAYS AS IDENTITY,
                     plan_code STRING,
                     plan_name STRING,
                     monthly_price_usd BIGINT,

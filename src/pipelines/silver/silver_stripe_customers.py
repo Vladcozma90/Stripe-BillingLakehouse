@@ -114,7 +114,6 @@ def _build_stage_stripe_customers(incr_df: DataFrame, run_id: str) -> DataFrame:
 
 def _build_unknown_df(spark: SparkSession, run_id: str) -> DataFrame:
     return spark.range(1).select(
-        lit(-1).cast("bigint").alias("stripe_customers_sk"),
         lit("UNKNOWN").cast("string").alias("stripe_customer_id"),
         lit(None).cast("string").alias("email"),
         lit(None).cast("string").alias("currency"),
@@ -209,14 +208,14 @@ def _merge_conform_scd2(
 
     (
         conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.stripe_customers_sk = s.stripe_customers_sk")
+        .merge(unknown_df.alias("s"), "t.stripe_customer_id = s.stripe_customer_id AND t.is_current = true")
         .whenNotMatchedInsertAll()
         .execute()
     )
 
     conform_active = (
         conform_dt.toDF()
-        .filter(col("is_current"))
+        .filter(col("is_current") == lit(True))
         .select(*key_columns, "record_hash")
     )
 

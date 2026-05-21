@@ -163,7 +163,6 @@ def _build_stage_erp_account_master_snapshot(incr_df: DataFrame, run_id: str) ->
 
 def _build_unknown_conform_df(spark: SparkSession, run_id: str) -> DataFrame:
     return spark.range(1).select(
-        lit(-1).cast("bigint").alias("account_master_snapshot_sk"),
         lit("UNKNOWN").cast("string").alias("account_id"),
         lit(None).cast("string").alias("customer_name"),
         lit(None).cast("string").alias("email"),
@@ -259,14 +258,14 @@ def _merge_conform_scd2(
 
     (
         conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.account_master_snapshot_sk = s.account_master_snapshot_sk")
+        .merge(unknown_df.alias("s"), "t.account_id = s.account_id AND t.is_current = true")
         .whenNotMatchedInsertAll()
         .execute()
     )
 
     conform_active = (
         conform_dt.toDF()
-        .filter(col("is_current"))
+        .filter(col("is_current") == lit(True))
         .select(*key_columns, "record_hash")
     )
 
