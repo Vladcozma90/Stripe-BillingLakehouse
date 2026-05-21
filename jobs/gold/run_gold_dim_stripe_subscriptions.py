@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import os
 from pyspark.sql import SparkSession
-from pipelines.gold.gold_dim_subscriptions import run_gold_dim_subscriptions
+from src.pipelines.gold.gold_dim_subscriptions import run_gold_dim_subscriptions
 from src.services.envs import load_envs
 from src.services.logger import setup_log
 

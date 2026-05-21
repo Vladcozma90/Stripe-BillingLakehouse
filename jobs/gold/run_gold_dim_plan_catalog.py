@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import logging
 from pyspark.sql import SparkSession
-from src.pipelines.gold.gold_dim_plan_catalog import run_gold_dim_plan
+from src.pipelines.gold.gold_dim_plan_catalog import run_gold_dim_plan_catalog
 from src.services.logger import setup_log
 from src.services.envs import load_envs
 
@@ -21,7 +21,7 @@ def job_run_gold_dim_plan_catalog() -> None:
     spark = SparkSession.builder.appName(pipeline_name).getOrCreate()
 
     try:
-        run_gold_dim_plan(spark=spark, env=env)
+        run_gold_dim_plan_catalog(spark=spark, env=env)
         logger.info("Job success | pipeline_name=%s", pipeline_name)
     
     except Exception:
