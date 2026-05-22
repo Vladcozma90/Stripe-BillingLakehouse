@@ -1,4 +1,3 @@
-````markdown
 # Data Model
 
 ## Overview

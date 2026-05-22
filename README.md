@@ -1,4 +1,3 @@
-````markdown
 # Stripe-BillingLakehouse
 
 `Stripe-BillingLakehouse` is a portfolio data engineering project that implements a realistic lakehouse pipeline for billing analytics.

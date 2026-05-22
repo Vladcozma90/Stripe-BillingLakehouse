@@ -1,4 +1,3 @@
-````markdown
 # Testing
 
 This document describes the current testing setup for `Stripe-BillingLakehouse`.
