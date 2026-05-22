@@ -813,25 +813,3 @@ BI-ready Gold outputs
 The project should be understandable to a technical interviewer and defensible as a pragmatic, production-inspired data engineering design.
 
 ````
-
-Main changes I made:
-
-```text
-Removed from ARCHITECTURE.md:
-- detailed surrogate key strategy
-- detailed unknown/default row strategy
-- detailed Gold dimension construction
-- detailed fact construction
-- table grain explanations
-- detailed fact/dimension relationship logic
-
-Kept in ARCHITECTURE.md:
-- high-level Gold responsibility
-- high-level Silver responsibility
-- system architecture
-- orchestration
-- config/secrets
-- medallion layers
-- ops/audit/watermarks
-- testing and limitations
-````
