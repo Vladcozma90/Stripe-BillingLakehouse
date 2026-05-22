@@ -26,6 +26,8 @@ __pycache__/
 # Environment files (uv and virtualenvs)
 .venv/
 .env
+.env.*
+!.env.example
 
 # Databricks / IDE specific
 .databricks/

@@ -1,214 +1,407 @@
-Paste this entire block into `docs/ARCHITECTURE.md`.
-
 ````markdown
 # Architecture
 
-The project is designed as a small but realistic lakehouse pipeline using Stripe API data, ERP-style reference and usage data, Databricks for Spark processing and Delta tables, Airflow for orchestration, YAML-based configuration, and ops tables for logging and incremental state.
+## Overview
 
-The goal is to show an end-to-end data engineering workflow, not only isolated transformation scripts.
+`Stripe-BillingLakehouse` is a portfolio data engineering project that implements a realistic lakehouse pipeline for billing analytics.
 
----
-
-## High-level flow
+The project combines Stripe billing data with ERP-style business data and processes it through a medallion architecture:
 
 ```text
-Stripe API / ERP files
-        |
-        v
-Landing / Raw source files
-        |
-        v
+Source systems
+    |
+    v
+Landing / raw files
+    |
+    v
 Bronze Delta tables
-        |
-        v
-Silver validation, cleaning, deduplication, quarantine
-        |
-        v
+    |
+    v
+Silver validation, cleaning, deduplication, quarantine, conformance
+    |
+    v
 Gold dimensional model
-        |
-        v
+    |
+    v
 BI / reporting layer
 ````
 
-Airflow is used to orchestrate Databricks jobs. Databricks is responsible for the Spark/lakehouse workloads.
+The main objective is to demonstrate production-style data engineering patterns:
+
+```text
+orchestration
+layered lakehouse design
+data quality handling
+incremental processing
+audit logging
+SCD2 conformance
+Gold dimensional modeling
+clear separation between technical layers and BI-facing outputs
+```
+
+The project is intentionally portfolio-scale, but the design follows patterns commonly used in production lakehouse environments.
 
 ---
 
-## Main components
+## Technology stack
 
-### Source systems
+| Area                        | Technology                                  |
+| --------------------------- | ------------------------------------------- |
+| Orchestration               | Apache Airflow                              |
+| Compute                     | Databricks / Apache Spark                   |
+| Storage format              | Delta Lake                                  |
+| Programming language        | Python / PySpark                            |
+| Configuration               | YAML + environment variables                |
+| Secrets                     | Azure Key Vault pattern                     |
+| Metadata and audit          | Delta ops tables                            |
+| Local orchestration runtime | Docker / Docker Compose                     |
+| Reporting target            | Power BI or any BI tool reading Gold tables |
+
+Airflow is responsible for orchestration.
+
+Databricks is responsible for Spark-based lakehouse processing.
+
+Delta Lake is used as the storage format for Bronze, Silver, Gold, and Ops tables.
+
+---
+
+## Source systems
 
 The project uses two source categories.
 
-#### Stripe API
+### Stripe API sources
 
-Stripe provides billing-related data such as:
+Stripe provides billing-related operational data:
 
-* customers;
-* subscriptions;
-* subscription items;
-* invoices.
+```text
+stripe_customers
+stripe_subscriptions
+stripe_subscription_items
+stripe_invoices
+```
 
-The API extraction layer is responsible for pulling data from Stripe and storing it in a landing/raw format before lakehouse processing.
+These datasets represent customers, subscriptions, subscription line items, and invoices.
 
-#### ERP-style files
+### ERP-style sources
 
-The ERP-style datasets represent internal business data used to enrich and analyze Stripe billing data.
+ERP-style data provides internal business context used to enrich the Stripe billing data:
 
-Examples:
+```text
+erp_account_master_snapshot
+erp_plan_catalog
+erp_usage_daily
+```
 
-* account master snapshot;
-* plan catalog;
-* usage daily.
-
-These sources are expected to arrive as files, such as Parquet files, in a landing/raw storage location.
+These datasets represent account metadata, plan/product metadata, and daily usage metrics.
 
 ---
 
-## Orchestration layer
+## Repository structure
 
-Airflow is used as the external orchestrator.
-
-In the local setup, Airflow runs in Docker and triggers Databricks Jobs through the Databricks Jobs API.
-
-Current validated orchestration path:
+The repository is organized around platform responsibilities:
 
 ```text
-Airflow DAG
-  -> DatabricksRunNowOperator
-  -> Databricks Jobs API
-  -> Databricks Job
-  -> Delta table output
+Stripe-BillingLakehouse/
+|
+├── bootstrap/              # Environment and table bootstrap logic
+├── configs/                # Environment-specific YAML configuration
+├── dags/                   # Airflow DAG definitions
+├── docs/                   # Project documentation
+├── jobs/                   # Job entrypoints
+│   ├── bootstrap/
+│   ├── bronze/
+│   ├── silver/
+│   └── gold/
+├── src/
+│   ├── connectors/         # Source/API connectors
+│   ├── pipelines/          # Bronze, Silver, Gold pipeline logic
+│   └── services/           # Shared services: env loading, audit, logging, secrets
+└── tests/                  # Unit and smoke tests
 ```
 
-The Databricks connection used by Airflow is:
+The design separates job entrypoints from reusable pipeline logic.
+
+Files under `jobs/` should remain thin wrappers. Core transformation logic belongs under `src/pipelines/`.
+
+---
+
+## Environment and configuration model
+
+Runtime behavior is controlled through YAML configuration and environment variables.
+
+YAML configuration defines non-secret project settings such as:
 
 ```text
-databricks_default
+catalog
+schemas
+storage paths
+source dataset configuration
+data quality rules
+pipeline-level settings
 ```
 
-The smoke-test Databricks job ID is passed through:
+Environment variables define runtime execution settings such as:
 
 ```text
+AIRFLOW_UID
+ENV
+LOG_LEVEL
+APP_CONFIG_DIR
+DATABRICKS_CONN_ID
+DATABRICKS_BOOTSTRAP_JOB_ID
+DATABRICKS_BRONZE_JOB_ID
+DATABRICKS_SILVER_JOB_ID
+DATABRICKS_GOLD_JOB_ID
 DATABRICKS_SMOKE_TEST_JOB_ID
 ```
 
-The same pattern is planned for the real pipeline jobs.
+The intended separation is:
+
+```text
+Non-secret project configuration -> YAML
+Runtime selectors and job IDs    -> environment variables
+Secret values                    -> Azure Key Vault or platform secret manager
+```
+
+Secrets should not be hard-coded in the repository.
 
 ---
 
-## Databricks layer
+## Configuration loading
 
-Databricks is used to run Spark jobs and write Delta tables.
+The pipeline should resolve its runtime configuration using:
 
-The planned Databricks jobs are:
+```text
+ENV
+APP_CONFIG_DIR
+```
+
+For example:
+
+```text
+ENV=dev
+APP_CONFIG_DIR=/opt/airflow/app/configs
+```
+
+This should resolve:
+
+```text
+/opt/airflow/app/configs/dev.yaml
+```
+
+This approach allows the same codebase to run against different environments by changing environment variables and YAML configuration.
+
+---
+
+## Orchestration architecture
+
+Airflow is the external orchestrator.
+
+The standard scheduled flow is:
+
+```text
+extract source data to landing
+        |
+        v
+trigger Databricks Bronze job
+        |
+        v
+trigger Databricks Silver job
+        |
+        v
+trigger Databricks Gold job
+```
+
+Airflow handles:
+
+```text
+scheduling
+dependencies
+retries
+job triggering
+basic orchestration visibility
+```
+
+Databricks handles:
+
+```text
+Spark execution
+Delta Lake reads/writes
+Bronze ingestion
+Silver transformations
+Gold model creation
+```
+
+This keeps Airflow focused on orchestration and avoids running heavy Spark workloads inside Airflow workers.
+
+---
+
+## Databricks job model
+
+The project is designed around separate Databricks jobs for each major stage:
 
 ```text
 billinglakehouse_bootstrap
 billinglakehouse_bronze
 billinglakehouse_silver
 billinglakehouse_gold
+billinglakehouse_smoke_test
 ```
 
-The smoke-test job has already been validated and is used as a runtime/orchestration check.
+The Databricks job IDs are passed to Airflow through environment variables.
 
-The real jobs should be created gradually and tested one layer at a time.
+Bootstrap and smoke-test jobs are separated from the normal scheduled pipeline.
 
 ---
 
-## Storage layout
+## Bootstrap job
 
-The project separates data by lakehouse layer.
+The bootstrap job prepares the lakehouse environment.
 
-Expected logical layers:
+Responsibilities:
 
 ```text
-landing
+create or validate schemas
+create or validate ops tables
+create or validate Bronze tables
+create or validate Silver tables
+create or validate Gold tables
+seed required default/unknown rows where appropriate
+```
+
+Expected core schemas:
+
+```text
 bronze
 silver
 gold
 ops
 ```
 
-Typical configured base paths:
+Expected ops tables:
 
 ```text
-landing_base_path
-bronze_base_path
-silver_base_path
-gold_base_path
-ops_base_path
-checkpoint_base_path
+ops.run_logs
+ops.pipeline_state
 ```
 
-The exact values are environment-specific and are loaded from YAML configuration.
+Bootstrap should be safe to rerun and should avoid destructive behavior unless explicitly requested.
 
 ---
 
-## Catalog and schemas
+## Smoke test job
 
-The project uses separate schemas for each layer.
+The smoke test job validates that the Databricks workspace can execute a simple job and write/read Delta data.
 
-Expected schema structure:
+The smoke test is not part of the production medallion architecture.
 
-```text
-<catalog>.<bronze_schema>
-<catalog>.<silver_schema>
-<catalog>.<gold_schema>
-<catalog>.<ops_schema>
-```
-
-Example development layout:
+It exists to validate:
 
 ```text
-billinglakehouse_dev.bronze
-billinglakehouse_dev.silver
-billinglakehouse_dev.gold
-billinglakehouse_dev.ops
+Databricks job execution
+basic Spark startup
+basic Delta write/read behavior
+environment connectivity
 ```
 
-The exact schema names are controlled by the environment configuration.
+Smoke-test objects should be treated as test artifacts, not core Bronze/Silver/Gold/Ops tables.
 
 ---
 
-## Configuration
+## Bronze job
 
-Project configuration is loaded from YAML files.
+The Bronze job loads source data into raw Delta tables.
 
-Example location:
+Responsibilities:
 
 ```text
-configs/dev.yaml
+read landing files
+preserve source-level fields
+standardize ingestion metadata
+write Bronze Delta tables
+record audit information
 ```
 
-Configuration includes:
+Bronze should stay close to the original source data.
 
-* catalog name;
-* schema names;
-* storage paths;
-* dataset definitions;
-* source settings;
-* data quality rules.
+Bronze does not own business conformance, dimensional modeling, or heavy transformation logic.
 
-The purpose of the YAML configuration is to keep environment-specific settings outside the pipeline logic.
+---
 
-Secrets should not be stored in YAML files. API tokens and credentials should be stored in a secret manager or provided through secure runtime configuration.
+## Silver job
+
+The Silver job validates, cleans, deduplicates, quarantines, and conforms Bronze data.
+
+Responsibilities:
+
+```text
+read Bronze tables
+apply data quality rules
+split valid and invalid records
+write DQ result tables
+write quarantine tables
+deduplicate records
+build current outputs
+build conformed outputs
+maintain SCD2 history where required
+update audit logs and pipeline state
+```
+
+Silver is the main technical quality and conformance layer.
+
+Silver conform tables preserve business keys, source/natural keys, SCD2 validity columns, record hashes, and audit metadata.
+
+Silver does not act as the BI star-schema layer.
+
+---
+
+## Gold job
+
+The Gold job builds the reporting-ready analytical model.
+
+Responsibilities:
+
+```text
+read Silver conform/current tables
+combine related Silver entities into business dimensions
+build BI-ready dimensions
+build BI-ready facts
+resolve fact-to-dimension relationships
+publish Gold Delta tables
+update audit logs
+```
+
+Gold is the business-facing consumption layer.
+
+Power BI or another BI tool should consume Gold tables, not Bronze or Silver tables.
+
+Detailed Gold table grains, keys, relationships, and unknown-row handling are documented in `docs/DATA_MODEL.md`.
+
+---
+
+## Medallion layer responsibilities
+
+## Landing layer
+
+The landing layer stores extracted source data before lakehouse processing.
+
+Typical landing data includes:
+
+```text
+Stripe API JSON responses
+ERP Parquet files
+source extracts partitioned by extraction date
+```
+
+Landing files are append-oriented and source-preserving.
 
 ---
 
 ## Bronze layer
 
-The Bronze layer stores raw or lightly standardized data.
+Bronze stores raw data in Delta format with technical ingestion metadata.
 
-Responsibilities:
-
-* read source/landing data;
-* preserve source fields where useful;
-* add technical ingestion metadata;
-* write Delta tables;
-* provide a stable input for Silver processing.
-
-Typical metadata columns may include:
+Typical Bronze metadata columns:
 
 ```text
 _ingest_ts
@@ -219,28 +412,24 @@ _landing_format
 etl_run_id
 ```
 
-The Bronze layer should avoid heavy business logic. Its main purpose is to preserve source data in a queryable Delta format.
+Bronze tables should answer:
+
+```text
+What data did we receive?
+When did we receive it?
+Where did it come from?
+Which run loaded it?
+```
+
+Bronze should preserve replayability. If Silver logic changes, Bronze data should still allow the pipeline to be reprocessed.
 
 ---
 
 ## Silver layer
 
-The Silver layer is responsible for data cleaning, validation, deduplication, quarantine, and conformed outputs.
+Silver owns technical data quality and conformance.
 
-Responsibilities:
-
-* read incremental Bronze data;
-* validate required columns;
-* apply dataset-specific DQ rules;
-* write DQ results;
-* quarantine invalid records;
-* deduplicate records by business key;
-* build current or conformed Silver tables;
-* update watermarks and run logs.
-
-The Silver layer is where most standardization logic belongs.
-
-Examples of Silver outputs:
+Silver outputs may include:
 
 ```text
 s_dq_<dataset>
@@ -249,72 +438,114 @@ s_current_<dataset>
 s_conform_<dataset>
 ```
 
-Not every dataset needs every table type. The pattern depends on the dataset and business use case.
-
----
-
-## Data quality
-
-Data quality rules are defined in configuration and executed by the DQ service.
-
-Supported rule types include:
+Silver responsibilities:
 
 ```text
-max_null
-min_value
-accepted_values
-unique
-valid_date
-valid_timestamp
+standardize data types
+validate required fields
+deduplicate records
+quarantine invalid records
+maintain current-state records
+maintain SCD2 conformed history where required
+preserve lineage and audit metadata
 ```
 
-The DQ service returns a normalized metrics structure containing:
+Silver should rely on business keys, source/natural keys, effective timestamps, record hashes, and audit metadata.
 
-* total rows;
-* rule-level results;
-* failed rows;
-* actual values;
-* thresholds;
-* overall result.
-
-DQ results can be written to Silver DQ tables for auditability.
-
-Invalid business-key records can be written to quarantine tables.
-
-The DQ logic has been unit-tested to ensure malformed dates and timestamps are counted as DQ failures instead of crashing Spark execution.
+Detailed key design and SCD2 lookup behavior are documented in `docs/DATA_MODEL.md`.
 
 ---
 
-## Quarantine pattern
+## Gold layer
 
-Records with invalid or missing business keys should not be loaded into conformed outputs.
+Gold owns the BI-facing analytical model.
 
-The quarantine pattern separates records into:
+Gold outputs include dimensions and facts used for billing and usage analytics.
+
+Expected analytical areas:
 
 ```text
-good_records
-bad_records
+customer/account reporting
+plan/product reporting
+subscription reporting
+invoice analysis
+subscription item analysis
+usage analysis
 ```
 
-Bad records are written to quarantine tables with a quarantine reason and timestamp.
+Gold is optimized for business consumption, not for preserving every source-system technical field.
 
-This makes failures visible without silently dropping records.
+Detailed Gold dimensions, facts, grains, and joins are documented in `docs/DATA_MODEL.md`.
 
 ---
 
-## Incremental processing
+## Ops layer
 
-The project uses watermark-based incremental processing.
+The Ops layer stores metadata required for observability and incremental processing.
 
-The expected pattern is:
+Expected ops tables:
 
-1. Read the last processed watermark from the ops state table.
-2. Filter source data using an incremental timestamp column.
-3. Process only new records.
-4. Write output tables.
-5. Update the watermark after successful processing.
+```text
+ops.run_logs
+ops.pipeline_state
+```
 
-The state table is expected to track values such as:
+The Ops layer supports:
+
+```text
+pipeline run tracking
+success/failure visibility
+row count tracking
+quarantine count tracking
+watermark management
+debugging and recovery
+```
+
+Ops tables are part of the lakehouse control plane, not part of the business reporting model.
+
+---
+
+## Data quality and quarantine
+
+Data quality checks are applied in Silver.
+
+Typical checks include:
+
+```text
+required key presence
+valid timestamps
+accepted status values
+non-negative amounts
+valid currencies
+deduplication rules
+business key uniqueness
+```
+
+Invalid records are not silently dropped. They are written to quarantine tables with metadata explaining why the record failed validation.
+
+Typical quarantine metadata includes:
+
+```text
+quarantine_reason
+quarantine_ts
+source identifiers
+raw business fields
+etl_run_id
+```
+
+This design makes bad data auditable and recoverable.
+
+---
+
+## Incremental processing and pipeline state
+
+The project uses ops tables to support incremental processing and observability.
+
+### `ops.pipeline_state`
+
+Stores the last successful processing watermark per pipeline/dataset.
+
+Typical columns:
 
 ```text
 pipeline_name
@@ -324,26 +555,13 @@ updated_at
 updated_by_run_id
 ```
 
-This pattern avoids reprocessing the full dataset on every run.
-
----
-
-## Ops tables
-
-The ops layer stores operational metadata.
-
-Expected ops tables:
-
-```text
-ops.run_logs
-ops.pipeline_state
-```
+This table allows jobs to process only new or changed data after the last successful run.
 
 ### `ops.run_logs`
 
-Tracks pipeline execution metadata.
+Stores run-level audit metadata.
 
-Typical fields:
+Typical columns:
 
 ```text
 pipeline_name
@@ -361,127 +579,260 @@ last_watermark_ts
 error_msg
 ```
 
-### `ops.pipeline_state`
-
-Tracks incremental state.
-
-Typical fields:
-
-```text
-pipeline_name
-dataset
-last_watermark_ts
-updated_at
-updated_by_run_id
-```
-
-The ops layer is important for observability, troubleshooting, and incremental processing.
+This table supports debugging, operational monitoring, and portfolio-level demonstration of observability.
 
 ---
 
-## Gold layer
+## Audit and error handling
 
-The Gold layer contains business-facing tables.
-
-Responsibilities:
-
-* read conformed Silver data;
-* build dimensions;
-* build fact tables;
-* expose stable reporting outputs.
-
-Expected Gold model types:
+Each pipeline should follow a consistent audit pattern:
 
 ```text
-dimension tables
-fact tables
+1. Generate run_id.
+2. Insert STARTED run log.
+3. Read input data.
+4. Transform and validate data.
+5. Write target tables.
+6. Update watermark/state only after successful processing.
+7. Mark run SUCCESS.
+8. On exception, mark run FAILED and re-raise the error.
 ```
 
-Examples may include:
+Watermarks should not be advanced if the target write fails.
+
+This protects the pipeline from marking unprocessed data as completed.
+
+---
+
+## Data lineage
+
+The project maintains lineage through metadata propagation across layers.
+
+Typical lineage metadata includes:
 
 ```text
-dim_customers
-dim_accounts
-dim_plan_catalog
-fact_invoices
-fact_usage_daily
-fact_billing_revenue
+etl_run_id
+_ingest_ts
+_ingest_date
+_file_name
+_source
+_landing_format
+silver_effective_start_ts
+silver_effective_end_ts
+gold_processed_ts
+gold_processed_date
 ```
 
-The Gold layer should be designed around clear business grains and reporting use cases.
+Layer-level lineage:
+
+```text
+Landing file
+    -> Bronze table with ingestion metadata
+    -> Silver DQ/current/conform tables
+    -> Gold dimensions and facts
+    -> BI/reporting
+```
+
+The goal is to make each record traceable back to its source extract and pipeline run.
+
+---
+
+## Table naming conventions
+
+Recommended naming pattern:
+
+```text
+Bronze:
+    b_<source_dataset>
+
+Silver:
+    s_dq_<dataset>
+    s_quarantine_<dataset>
+    s_current_<dataset>
+    s_conform_<dataset>
+
+Gold:
+    g_dim_<business_entity>
+    g_fact_<business_process>
+
+Ops:
+    run_logs
+    pipeline_state
+```
+
+Examples:
+
+```text
+b_stripe_customers
+s_conform_stripe_customers
+s_conform_erp_account_master_snapshot
+g_dim_customers
+g_fact_invoices
+```
+
+Detailed table-level modeling is documented in `docs/DATA_MODEL.md`.
+
+---
+
+## Schema organization
+
+The intended schema separation is:
+
+```text
+<catalog>.bronze
+<catalog>.silver
+<catalog>.gold
+<catalog>.ops
+```
+
+Each layer has a separate responsibility:
+
+| Schema | Responsibility                                 |
+| ------ | ---------------------------------------------- |
+| bronze | Raw Delta representation of source data        |
+| silver | Cleaned, validated, conformed, historical data |
+| gold   | Business-facing dimensional model              |
+| ops    | Audit logs and pipeline state                  |
+
+Code should consistently use configured schema names from the environment configuration instead of hard-coded schema strings.
 
 ---
 
 ## Reporting layer
 
-The Gold layer is intended to be consumed by BI tools such as Power BI.
+The Gold layer is the intended reporting interface.
 
-Power BI should connect to curated Gold tables rather than directly to Bronze or raw Silver tables.
+Power BI or another BI tool should consume only Gold tables.
 
-Expected reporting pattern:
+Expected reporting outcomes:
 
 ```text
-Gold Delta tables
-  -> Databricks SQL / warehouse
-  -> Power BI
+customer billing overview
+revenue by customer
+revenue by plan
+invoice status analysis
+subscription analysis
+usage by account and plan
 ```
 
-This keeps reporting isolated from raw ingestion and intermediate processing details.
+The reporting layer should not depend directly on Bronze or Silver implementation details.
 
 ---
 
-## Current validated state
+## Testing strategy
 
-The following items have already been validated:
+The project includes unit and smoke-test coverage.
 
-```text
-Unit tests: passed
-Airflow to Databricks smoke orchestration: passed
-Databricks smoke job execution: passed
-Smoke-test Delta outputs: passed
-```
-
-The current unit test result is:
+Testing is expected to validate:
 
 ```text
-11 passed
+configuration loading
+import safety
+data quality logic
+job execution smoke checks
+basic Delta write/read behavior
 ```
 
-The smoke-test job validates that Airflow can trigger Databricks and that Databricks can execute project code.
+The smoke test validates execution and connectivity, but it is not a replacement for full integration testing.
+
+Detailed testing scope is documented in `docs/TESTING.md`.
+
+---
+
+## Design decisions
+
+### Airflow orchestrates, Databricks computes
+
+Airflow is used for scheduling, dependency management, retries, and triggering Databricks jobs.
+
+Databricks is used for Spark execution and Delta Lake processing.
+
+This avoids running heavy Spark workloads directly inside Airflow workers.
+
+### Bronze remains source-preserving
+
+Bronze keeps data close to the original source format.
+
+This makes the pipeline easier to replay if transformation logic changes.
+
+### Silver owns data quality and conformance
+
+Silver is where records become cleaned, validated, conformed, and auditable.
+
+SCD2 history is maintained in Silver where historical conformance is required.
+
+### Gold owns the BI-facing model
+
+Gold creates the analytical model consumed by BI tools.
+
+Gold hides source-system complexity and exposes dimensions and facts suitable for reporting.
+
+### Hashes are used for change detection
+
+Record hashes are used for deduplication and SCD2 change detection.
+
+Gold dimensional key choices and fact-to-dimension resolution rules are documented in `docs/DATA_MODEL.md`.
 
 ---
 
 ## Current limitations
 
-The architecture is not yet fully validated against live ADLS-backed data.
+This project is designed as a realistic portfolio project, not a complete enterprise platform.
 
-Current limitations:
+Known limitations:
 
-* full real bronze/silver/gold jobs still need to be created and tested;
-* live ADLS integration still needs validation;
-* real Stripe API extraction needs final integration testing;
-* full reconciliation between source and Gold outputs is not yet complete;
-* performance testing is not yet in scope.
+```text
+full production deployment is not included
+CI/CD should be expanded
+integration tests should be expanded
+real production secrets must be configured outside the repo
+infrastructure provisioning is not fully automated
+observability could be extended with alerting
+data volumes are portfolio-scale, not enterprise-scale
+```
 
-These are expected next-stage tasks.
+These limitations are acceptable for a portfolio project if they are documented clearly and the core pipeline design is coherent.
 
 ---
 
-## Planned execution flow
+## Target outcome
 
-The planned full pipeline order is:
-
-```text
-bootstrap
-  -> bronze
-  -> silver
-  -> gold
-```
-
-For recurring scheduled runs, bootstrap may be excluded once the environment is already prepared.
-
-Normal recurring flow:
+The target outcome is a working lakehouse pipeline that demonstrates:
 
 ```text
-bronze -> silver -> gold
+API ingestion
+file ingestion
+Bronze/Silver/Gold medallion architecture
+data quality and quarantine
+SCD2 conformance
+audit logging
+incremental processing
+Airflow-to-Databricks orchestration
+BI-ready Gold outputs
 ```
+
+The project should be understandable to a technical interviewer and defensible as a pragmatic, production-inspired data engineering design.
+
+````
+
+Main changes I made:
+
+```text
+Removed from ARCHITECTURE.md:
+- detailed surrogate key strategy
+- detailed unknown/default row strategy
+- detailed Gold dimension construction
+- detailed fact construction
+- table grain explanations
+- detailed fact/dimension relationship logic
+
+Kept in ARCHITECTURE.md:
+- high-level Gold responsibility
+- high-level Silver responsibility
+- system architecture
+- orchestration
+- config/secrets
+- medallion layers
+- ops/audit/watermarks
+- testing and limitations
+````
