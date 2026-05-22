@@ -7,7 +7,7 @@ The project combines Stripe billing data with ERP-style business data and proces
 
 The goal is to demonstrate practical data engineering patterns used in modern cloud/lakehouse environments:
 
-
+```
 API ingestion
 file ingestion
 Bronze / Silver / Gold lakehouse design
@@ -19,6 +19,7 @@ Airflow orchestration
 Databricks job execution
 Gold dimensional modeling
 BI-ready outputs
+```
 ````
 
 ---
