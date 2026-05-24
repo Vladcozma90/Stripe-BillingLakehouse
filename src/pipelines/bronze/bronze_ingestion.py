@@ -32,28 +32,26 @@ def _read_autoloader(
         spark: SparkSession,
         src_path: str,
         schema_path: str,
-        format: str
-) -> DataFrame:
-    
-    df = (spark.readStream
-                 .format("cloudFiles")
-                 .option("cloudFiles.format", format)
-                 .option("cloudFiles.schemaLocation", schema_path)
-                 .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
-                 )
-    
-    if format == "json":
-        df = (
-            df
-            .option("multiLine", "false")
-            .option("pathGlobFilter", "*jsonl")
-        )
-    
-    stream_df = (df
-                 .load(src_path)
-                 .drop("_rescued_data")
-                 )
-    
+        landing_format: str,
+    ) -> DataFrame:
+
+    reader = (
+        spark.readStream
+        .format("cloudFiles")
+        .option("cloudFiles.format", landing_format)
+        .option("cloudFiles.schemaLocation", schema_path)
+        .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+    )
+
+    if landing_format == "json":
+        reader = reader.option("multiLine", "false")
+
+    stream_df = (
+        reader
+        .load(src_path)
+        .drop("_rescued_data")
+    )
+
     return stream_df
 
 
@@ -74,12 +72,12 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
     if dataset not in (env.datasets or {}):
         raise ValueError(f"Dataset '{dataset}' not found in YAML datasets registry.")
     
-    format = _get_landing_format(env, dataset)
+    landing_format = _get_landing_format(env, dataset)
     cfg = _build_config(env, dataset)
     pipeline_name = f"bronze_{dataset}"
     run_id = uuid.uuid4().hex
 
-    logger.info("Starting bronze ingestion | dataset=%s | format=%s | run_id=%s", dataset, format, run_id)
+    logger.info("Starting bronze ingestion | dataset=%s | format=%s | run_id=%s", dataset, landing_format, run_id)
 
 
     insert_run_log_start(
@@ -95,14 +93,14 @@ def ingest_bronze(spark: SparkSession, env: EnvConfig, dataset: str) -> None:
 
     try:
 
-        stream_df = _read_autoloader(spark, cfg["src_path"], cfg["schema_path"], format)
+        stream_df = _read_autoloader(spark, cfg["src_path"], cfg["schema_path"], landing_format)
 
         enriched_df = (stream_df
                        .withColumn("_ingest_ts", current_timestamp())
                        .withColumn("_ingest_date", current_date())
                        .withColumn("_file_name", input_file_name())
                        .withColumn("_source", lit(cfg["src_path"]))
-                       .withColumn("_landing_format", lit(format))
+                       .withColumn("_landing_format", lit(landing_format))
                        )
         
         spark.sql(f"""

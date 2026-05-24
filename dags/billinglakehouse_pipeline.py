@@ -3,31 +3,15 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta
 
-from airflow.sdk import dag, task
+from airflow.sdk import dag
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
-
-PROJECT_ROOT = os.getenv("PROJECT_ROOT", "/opt/airflow/app")
-ENV = os.getenv("ENV", "dev")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
 DATABRICKS_CONN_ID = os.getenv("DATABRICKS_CONN_ID", "databricks_default")
 
-BRONZE_JOB_ID = int(os.getenv("DATABRICKS_BRONZE_JOB_ID", "0"))
-SILVER_JOB_ID = int(os.getenv("DATABRICKS_SILVER_JOB_ID", "0"))
-GOLD_JOB_ID = int(os.getenv("DATABRICKS_GOLD_JOB_ID", "0"))
-
-DEFAULT_ENV = {
-    "PYTHONPATH": PROJECT_ROOT,
-    "ENV": ENV,
-    "LOG_LEVEL": LOG_LEVEL,
-}
-
-STRIPE_REST_DATASETS = [
-    "stripe_customers",
-    "stripe_subscriptions",
-    "stripe_subscription_items",
-    "stripe_invoices",
-]
+API_EXTRACT_JOB_ID = int(os.environ["DATABRICKS_API_EXTRACT_JOB_ID"])
+BRONZE_JOB_ID = int(os.environ["DATABRICKS_BRONZE_JOB_ID"])
+SILVER_JOB_ID = int(os.environ["DATABRICKS_SILVER_JOB_ID"])
+GOLD_JOB_ID = int(os.environ["DATABRICKS_GOLD_JOB_ID"])
 
 @dag(
     dag_id="billinglakehouse_pipeline",
@@ -46,20 +30,10 @@ STRIPE_REST_DATASETS = [
 )
 def billinglakehouse_pipeline():
 
-    @task.bash(
-        task_id="extract_rest_to_landing",
-        env=DEFAULT_ENV,
-        append_env=True,
-    )
-    def extract_rest_to_landing(dataset: str) -> str:
-        return (
-            f"cd {PROJECT_ROOT} && "
-            "python -m jobs.bronze.extract_rest_to_landing "
-            f"--dataset {dataset}"
-        )
-    
-    rest_extract_tasks = extract_rest_to_landing.expand(
-        dataset=STRIPE_REST_DATASETS
+    trigger_API_extract = DatabricksRunNowOperator(
+        task_id="trigger_databricks_api_extract",
+        databricks_conn_id=DATABRICKS_CONN_ID,
+        job_id=API_EXTRACT_JOB_ID,
     )
 
     trigger_bronze = DatabricksRunNowOperator(
@@ -80,7 +54,6 @@ def billinglakehouse_pipeline():
         job_id=GOLD_JOB_ID,
     )
 
-    rest_extract_tasks >> trigger_bronze >> trigger_silver >> trigger_gold
+    trigger_API_extract >> trigger_bronze >> trigger_silver >> trigger_gold
 
 billinglakehouse_pipeline()
-
