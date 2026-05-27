@@ -1,6 +1,5 @@
 import uuid
 import logging
-from datetime import datetime
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
@@ -112,30 +111,6 @@ def _build_stage_erp_plan_catalog(incr_df: DataFrame, run_id: str):
     )
 
 
-def _build_unknown_conform_df(spark: SparkSession, run_id: str):
-    return spark.range(1).select(
-        lit("UNKNOWN").cast("string").alias("plan_code"),
-        lit(None).cast("string").alias("plan_name"),
-        lit(None).cast("bigint").alias("monthly_price_usd"),
-        lit(None).cast("bigint").alias("seats_included"),
-        lit(None).cast("bigint").alias("max_units_per_month"),
-        lit(None).cast("string").alias("currency"),
-        lit(None).cast("string").alias("billing_period"),
-        lit(datetime(1900, 1, 1)).cast("date").alias("effective_from"),
-        lit(None).cast("date").alias("effective_to"),
-        lit(True).alias("source_is_current"),
-        lit(None).cast("string").alias("price_version"),
-        lit(None).cast("string").alias("_file_name"),
-        lit("system").cast("string").alias("_source"),
-        lit("UNKNOWN").cast("string").alias("_landing_format"),
-        lit(datetime(1900, 1, 1)).cast("timestamp").alias("silver_effective_start_ts"),
-        lit(None).cast("timestamp").alias("silver_effective_end_ts"),
-        current_timestamp().alias("updated_at"),
-        lit(run_id).cast("string").alias("etl_run_id"),
-        sha2(lit("UNKNOWN"), 256).alias("record_hash"),
-        lit(True).alias("is_current"),
-    )
-
 
 def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
     scd2_cols = [
@@ -198,15 +173,6 @@ def _merge_conform_scd2(
         raise ValueError(f"Key columns missing from incoming_df: {missing_columns}")
 
     conform_dt = DeltaTable.forName(spark, conform_table)
-
-    unknown_df = _build_unknown_conform_df(spark=spark, run_id=run_id)
-
-    (
-        conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.plan_code = s.plan_code AND t.is_current = true")
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
 
     conform_active = (
         conform_dt.toDF()

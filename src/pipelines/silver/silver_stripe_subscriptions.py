@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import uuid
 import logging
-from datetime import datetime
-
 from delta.tables import DeltaTable
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.functions import (
@@ -154,38 +152,6 @@ def _build_stage_stripe_subscriptions(incr_df: DataFrame, run_id: str) -> DataFr
     )
 
 
-def _build_unknown_df(spark: SparkSession, run_id: str) -> DataFrame:
-    return spark.range(1).select(
-        lit(-1).cast("bigint").alias("stripe_subscriptions_sk"),
-        lit("UNKNOWN").cast("string").alias("subscription_id"),
-        lit(None).cast("string").alias("stripe_customer_id"),
-        lit(None).cast("string").alias("subscription_status"),
-        lit(None).cast("string").alias("collection_method"),
-        lit(None).cast("string").alias("currency"),
-        lit(None).cast("string").alias("latest_invoice_id"),
-        lit(None).cast("timestamp").alias("created_ts"),
-        lit(None).cast("timestamp").alias("start_date_ts"),
-        lit(None).cast("timestamp").alias("billing_cycle_anchor_ts"),
-        lit(None).cast("timestamp").alias("cancel_at_ts"),
-        lit(None).cast("timestamp").alias("canceled_at_ts"),
-        lit(None).cast("timestamp").alias("ended_at_ts"),
-        lit(None).cast("timestamp").alias("trial_start_ts"),
-        lit(None).cast("timestamp").alias("trial_end_ts"),
-        lit(None).cast("boolean").alias("cancel_at_period_end"),
-        lit(None).cast("boolean").alias("livemode"),
-        lit(None).cast("timestamp").alias("api_extracted_ts"),
-        lit(None).cast("string").alias("_file_name"),
-        lit("system").cast("string").alias("_source"),
-        lit("UNKNOWN").cast("string").alias("_landing_format"),
-        lit(datetime(1900, 1, 1)).cast("timestamp").alias("silver_effective_start_ts"),
-        lit(None).cast("timestamp").alias("silver_effective_end_ts"),
-        current_timestamp().alias("updated_at"),
-        lit(run_id).cast("string").alias("etl_run_id"),
-        sha2(lit("UNKNOWN"), 256).alias("record_hash"),
-        lit(True).alias("is_current"),
-    )
-
-
 def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
     scd2_cols = [
         "subscription_id",
@@ -268,15 +234,6 @@ def _merge_conform_scd2(
         raise ValueError(f"key columns missing from incoming_df: {missing_columns}")
 
     conform_dt = DeltaTable.forName(spark, conform_table)
-
-    unknown_df = _build_unknown_df(spark=spark, run_id=run_id)
-
-    (
-        conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), condition="t.stripe_subscriptions_sk = s.stripe_subscriptions_sk")
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
 
     conform_active = (
         conform_dt.toDF()

@@ -15,7 +15,6 @@ from pyspark.sql.functions import (
     concat_ws,
     expr,
 )
-from datetime import datetime
 from delta.tables import DeltaTable
 
 from src.services.envs import EnvConfig
@@ -161,32 +160,6 @@ def _build_stage_erp_account_master_snapshot(incr_df: DataFrame, run_id: str) ->
     )
 
 
-def _build_unknown_conform_df(spark: SparkSession, run_id: str) -> DataFrame:
-    return spark.range(1).select(
-        lit("UNKNOWN").cast("string").alias("account_id"),
-        lit(None).cast("string").alias("customer_name"),
-        lit(None).cast("string").alias("email"),
-        lit(None).cast("string").alias("stripe_customer_id"),
-        lit(None).cast("string").alias("plan_code"),
-        lit(None).cast("string").alias("segment"),
-        lit(None).cast("string").alias("country_code"),
-        lit(None).cast("string").alias("region"),
-        lit(datetime(1900, 1, 1)).cast("date").alias("account_created_at_raw"),
-        lit(None).cast("string").alias("status"),
-        lit(None).cast("date").alias("churned_at_raw"),
-        lit(None).cast("string").alias("source_system"),
-        lit(None).cast("date").alias("snapshot_dt"),
-        lit(None).cast("string").alias("_file_name"),
-        lit("system").cast("string").alias("_source"),
-        lit("UNKNOWN").cast("string").alias("_landing_format"),
-        lit(datetime(1900, 1, 1)).cast("timestamp").alias("silver_effective_start_ts"),
-        lit(None).cast("timestamp").alias("silver_effective_end_ts"),
-        current_timestamp().alias("updated_at"),
-        lit(run_id).cast("string").alias("etl_run_id"),
-        sha2(lit("UNKNOWN"), 256).alias("record_hash"),
-        lit(True).alias("is_current"),
-    )
-
 
 def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
     scd2_cols = [
@@ -253,15 +226,6 @@ def _merge_conform_scd2(
         raise ValueError(f"Key columns missing from incoming_df: {missing_columns}")
 
     conform_dt = DeltaTable.forName(spark, conform_table)
-
-    unknown_df = _build_unknown_conform_df(spark=spark, run_id=run_id)
-
-    (
-        conform_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.account_id = s.account_id AND t.is_current = true")
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
 
     conform_active = (
         conform_dt.toDF()

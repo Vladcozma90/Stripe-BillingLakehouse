@@ -62,18 +62,20 @@ def _get_required_usage_columns() -> list[str]:
 def _get_required_dim_customer_columns() -> list[str]:
     return [
         "customer_sk",
-        "customer_business_key",
         "account_id",
         "stripe_customer_id",
         "plan_code",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
 def _get_required_dim_plan_columns() -> list[str]:
     return [
         "plan_sk",
-        "plan_business_key",
         "plan_code",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
@@ -114,6 +116,8 @@ def _build_stage_gold_fact_usage_daily(
             col("account_id").alias("dim_customer_account_id"),
             col("stripe_customer_id"),
             col("plan_code").alias("dim_customer_plan_code"),
+            col("silver_effective_start_ts").alias("customer_effective_start_ts"),
+            col("silver_effective_end_ts").alias("customer_effective_end_ts"),
         )
     )
 
@@ -122,6 +126,8 @@ def _build_stage_gold_fact_usage_daily(
         .select(
             col("plan_sk"),
             col("plan_code").alias("dim_plan_code"),
+            col("silver_effective_start_ts").alias("plan_effective_start_ts"),
+            col("silver_effective_end_ts").alias("plan_effective_end_ts"),
         )
     )
 
@@ -129,12 +135,26 @@ def _build_stage_gold_fact_usage_daily(
         stage_df.alias("f")
         .join(
             customer_df.alias("c"),
-            col("f.account_id") == col("c.dim_customer_account_id"),
+            (
+                (col("f.account_id") == col("c.dim_customer_account_id"))
+                & (col("f.event_ts") >= col("c.customer_effective_start_ts"))
+                & (
+                    (col("f.event_ts") < col("c.customer_effective_end_ts"))
+                    | col("c.customer_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
         .join(
             plan_df.alias("p"),
-            col("c.dim_customer_plan_code") == col("p.dim_plan_code"),
+            (
+                (col("c.dim_customer_plan_code") == col("p.dim_plan_code"))
+                & (col("f.event_ts") >= col("p.plan_effective_start_ts"))
+                & (
+                    (col("f.event_ts") < col("p.plan_effective_end_ts"))
+                    | col("p.plan_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
     )
@@ -215,7 +235,7 @@ def _merge_gold_fact_usage_daily(
         gold_dt.alias("t")
         .merge(source_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash",
+            condition="NOT (t.record_hash <=> s.record_hash)",
             set={
                 "usage_id": "s.usage_id",
                 "customer_sk": "s.customer_sk",

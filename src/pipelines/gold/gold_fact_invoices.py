@@ -34,8 +34,8 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
 
         "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_invoices",
 
-        "gold_dim_subscription_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_subscription",
-        "gold_dim_customer_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customer",
+        "gold_dim_subscriptions_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_subscriptions",
+        "gold_dim_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
         "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
         "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_invoices",
@@ -75,30 +75,33 @@ def _get_required_invoice_columns() -> list[str]:
     ]
 
 
-def _get_required_dim_subscription_columns() -> list[str]:
+def _get_required_dim_subscriptions_columns() -> list[str]:
     return [
         "subscription_sk",
-        "subscription_business_key",
         "subscription_id",
         "stripe_customer_id",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
-def _get_required_dim_customer_columns() -> list[str]:
+def _get_required_dim_customers_columns() -> list[str]:
     return [
         "customer_sk",
-        "customer_business_key",
         "account_id",
         "stripe_customer_id",
         "plan_code",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
 def _get_required_dim_plan_columns() -> list[str]:
     return [
         "plan_sk",
-        "plan_business_key",
         "plan_code",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
@@ -116,7 +119,7 @@ def _validate_required_columns(
 def _build_stage_gold_fact_invoices(
     silver_df: DataFrame,
     dim_subscription_df: DataFrame,
-    dim_customer_df: DataFrame,
+    dim_customers_df: DataFrame,
     dim_plan_df: DataFrame,
     run_id: str,
 ) -> DataFrame:
@@ -156,16 +159,20 @@ def _build_stage_gold_fact_invoices(
             col("subscription_sk"),
             col("subscription_id").alias("dim_subscription_id"),
             col("stripe_customer_id").alias("dim_subscription_stripe_customer_id"),
+            col("silver_effective_start_ts").alias("subscription_effective_start_ts"),
+            col("silver_effective_end_ts").alias("subscription_effective_end_ts"),
         )
     )
 
-    customer_df = (
-        dim_customer_df
+    customers_df = (
+        dim_customers_df
         .select(
             col("customer_sk"),
             col("stripe_customer_id").alias("dim_customer_stripe_customer_id"),
             col("account_id"),
             col("plan_code").alias("dim_customer_plan_code"),
+            col("silver_effective_start_ts").alias("customer_effective_start_ts"),
+            col("silver_effective_end_ts").alias("customer_effective_end_ts"),
         )
     )
 
@@ -174,6 +181,8 @@ def _build_stage_gold_fact_invoices(
         .select(
             col("plan_sk"),
             col("plan_code").alias("dim_plan_code"),
+            col("silver_effective_start_ts").alias("plan_effective_start_ts"),
+            col("silver_effective_end_ts").alias("plan_effective_end_ts"),
         )
     )
 
@@ -181,17 +190,38 @@ def _build_stage_gold_fact_invoices(
         stage_df.alias("f")
         .join(
             subscription_df.alias("s"),
-            col("f.subscription_id") == col("s.dim_subscription_id"),
+            (
+                (col("f.subscription_id") == col("s.dim_subscription_id"))
+                & (col("f.created_ts") >= col("s.subscription_effective_start_ts"))
+                & (
+                    (col("f.created_ts") < col("s.subscription_effective_end_ts"))
+                    | col("s.subscription_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
         .join(
-            customer_df.alias("c"),
-            col("f.stripe_customer_id") == col("c.dim_customer_stripe_customer_id"),
+            customers_df.alias("c"),
+            (
+                (col("f.stripe_customer_id") == col("c.dim_customer_stripe_customer_id"))
+                & (col("f.created_ts") >= col("c.customer_effective_start_ts"))
+                & (
+                    (col("f.created_ts") < col("c.customer_effective_end_ts"))
+                    | col("c.customer_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
         .join(
             plan_df.alias("p"),
-            col("c.dim_customer_plan_code") == col("p.dim_plan_code"),
+            (
+                (col("c.dim_customer_plan_code") == col("p.dim_plan_code"))
+                & (col("f.created_ts") >= col("p.plan_effective_start_ts"))
+                & (
+                    (col("f.created_ts") < col("p.plan_effective_end_ts"))
+                    | col("p.plan_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
     )
@@ -311,7 +341,7 @@ def _merge_gold_fact_invoices(
         gold_dt.alias("t")
         .merge(source_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash",
+            condition="NOT (t.record_hash <=> s.record_hash)",
             set={
                 "invoice_id": "s.invoice_id",
                 "subscription_sk": "s.subscription_sk",
@@ -422,7 +452,7 @@ def run_gold_fact_invoices(spark: SparkSession, env: EnvConfig) -> None:
 
         silver_df = spark.table(cfg["silver_current_table"])
         dim_subscription_df = spark.table(cfg["gold_dim_subscription_table"])
-        dim_customer_df = spark.table(cfg["gold_dim_customer_table"])
+        dim_customers_df = spark.table(cfg["gold_dim_customer_table"])
         dim_plan_df = spark.table(cfg["gold_dim_plan_table"])
 
         _validate_required_columns(
@@ -433,13 +463,13 @@ def run_gold_fact_invoices(spark: SparkSession, env: EnvConfig) -> None:
 
         _validate_required_columns(
             df=dim_subscription_df,
-            required_columns=_get_required_dim_subscription_columns(),
+            required_columns=_get_required_dim_subscriptions_columns(),
             table_name=cfg["gold_dim_subscription_table"],
         )
 
         _validate_required_columns(
-            df=dim_customer_df,
-            required_columns=_get_required_dim_customer_columns(),
+            df=dim_customers_df,
+            required_columns=_get_required_dim_customers_columns(),
             table_name=cfg["gold_dim_customer_table"],
         )
 
@@ -467,7 +497,7 @@ def run_gold_fact_invoices(spark: SparkSession, env: EnvConfig) -> None:
         gold_df = _build_stage_gold_fact_invoices(
             silver_df=silver_df,
             dim_subscription_df=dim_subscription_df,
-            dim_customer_df=dim_customer_df,
+            dim_customers_df=dim_customers_df,
             dim_plan_df=dim_plan_df,
             run_id=run_id,
         ).persist()

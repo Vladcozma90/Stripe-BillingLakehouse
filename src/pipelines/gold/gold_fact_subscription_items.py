@@ -66,27 +66,30 @@ def _get_required_subscription_item_columns() -> list[str]:
 def _get_required_dim_subscription_columns() -> list[str]:
     return [
         "subscription_sk",
-        "subscription_business_key",
         "subscription_id",
         "stripe_customer_id",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
 def _get_required_dim_customer_columns() -> list[str]:
     return [
         "customer_sk",
-        "customer_business_key",
         "account_id",
         "stripe_customer_id",
         "plan_code",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
 def _get_required_dim_plan_columns() -> list[str]:
     return [
         "plan_sk",
-        "plan_business_key",
         "plan_code",
+        "silver_effective_start_ts",
+        "silver_effective_end_ts",
     ]
 
 
@@ -132,6 +135,8 @@ def _build_stage_gold_fact_subscription_items(
             col("subscription_sk"),
             col("subscription_id").alias("dim_subscription_id"),
             col("stripe_customer_id").alias("dim_subscription_stripe_customer_id"),
+            col("silver_effective_start_ts").alias("subscription_effective_start_ts"),
+            col("silver_effective_end_ts").alias("subscription_effective_end_ts"),
         )
     )
 
@@ -142,6 +147,8 @@ def _build_stage_gold_fact_subscription_items(
             col("stripe_customer_id").alias("dim_customer_stripe_customer_id"),
             col("account_id"),
             col("plan_code").alias("dim_customer_plan_code"),
+            col("silver_effective_start_ts").alias("customer_effective_start_ts"),
+            col("silver_effective_end_ts").alias("customer_effective_end_ts"),
         )
     )
 
@@ -150,6 +157,8 @@ def _build_stage_gold_fact_subscription_items(
         .select(
             col("plan_sk"),
             col("plan_code").alias("dim_plan_code"),
+            col("silver_effective_start_ts").alias("plan_effective_start_ts"),
+            col("silver_effective_end_ts").alias("plan_effective_end_ts"),
         )
     )
 
@@ -157,17 +166,38 @@ def _build_stage_gold_fact_subscription_items(
         stage_df.alias("f")
         .join(
             subscription_df.alias("s"),
-            col("f.subscription_id") == col("s.dim_subscription_id"),
+            (
+                (col("f.subscription_id") == col("s.dim_subscription_id"))
+                & (col("f.item_created_ts") >= col("s.subscription_effective_start_ts"))
+                & (
+                    (col("f.item_created_ts") < col("s.subscription_effective_end_ts"))
+                    | col("s.subscription_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
         .join(
             customer_df.alias("c"),
-            col("s.dim_subscription_stripe_customer_id") == col("c.dim_customer_stripe_customer_id"),
+            (
+                (col("s.dim_subscription_stripe_customer_id") == col("c.dim_customer_stripe_customer_id"))
+                & (col("f.item_created_ts") >= col("c.customer_effective_start_ts"))
+                & (
+                    (col("f.item_created_ts") < col("c.customer_effective_end_ts"))
+                    | col("c.customer_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
         .join(
             plan_df.alias("p"),
-            col("c.dim_customer_plan_code") == col("p.dim_plan_code"),
+            (
+                (col("c.dim_customer_plan_code") == col("p.dim_plan_code"))
+                & (col("f.item_created_ts") >= col("p.plan_effective_start_ts"))
+                & (
+                    (col("f.item_created_ts") < col("p.plan_effective_end_ts"))
+                    | col("p.plan_effective_end_ts").isNull()
+                )
+            ),
             how="left",
         )
     )
@@ -265,7 +295,7 @@ def _merge_gold_fact_subscription_items(
         gold_dt.alias("t")
         .merge(source_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash",
+            condition="NOT (t.record_hash <=> s.record_hash)",
             set={
                 "subscription_item_id": "s.subscription_item_id",
                 "subscription_sk": "s.subscription_sk",

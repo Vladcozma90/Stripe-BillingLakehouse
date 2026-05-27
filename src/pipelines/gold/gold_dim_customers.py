@@ -219,11 +219,6 @@ def _build_gold_dim_customer(
         )
     )
 
-def _build_unknown_gold_dim_customer(spark: SparkSession) -> DataFrame:
-    return spark.range(1).select(
-        lit(-1).cast("bigint").alias("customer_sk"))
-
-
 def _merge_gold_dim_customer(
     spark: SparkSession,
     target_table: str,
@@ -231,21 +226,13 @@ def _merge_gold_dim_customer(
 ) -> None:
     target_dt = DeltaTable.forName(spark, target_table)
 
-    unknown_df = _build_unknown_gold_dim_customer(spark=spark)
-
-    (target_dt.alias("t")
-        .merge(unknown_df.alias("s"), "t.customer_business_key = s.customer_sk")
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
-
     merge_condition = "t.customer_business_key <=> s.customer_business_key"
 
     (
         target_dt.alias("t")
         .merge(source_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash",
+            condition="NOT (t.record_hash <=> s.record_hash)",
             set={
                 "account_id": "s.account_id",
                 "stripe_customer_id": "s.stripe_customer_id",
