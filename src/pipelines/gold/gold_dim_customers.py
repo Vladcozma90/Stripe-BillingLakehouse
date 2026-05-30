@@ -28,9 +28,9 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
 
         "silver_account_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_account_master_snapshot",
-        "silver_stripe_customer_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
+        "silver_stripe_customers_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
 
-        "gold_customer_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
+        "gold_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
         "gold_customer_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_customers",
     }
 
@@ -56,7 +56,7 @@ def _get_required_account_columns() -> list[str]:
     ]
 
 
-def _get_required_stripe_customer_columns() -> list[str]:
+def _get_required_stripe_customers_columns() -> list[str]:
     return [
         "stripe_customer_id",
         "email",
@@ -86,7 +86,7 @@ def _validate_required_columns(
 
 def _build_gold_dim_customer(
     account_df: DataFrame,
-    stripe_customer_df: DataFrame,
+    stripe_customers_df: DataFrame,
     run_id: str,
 ) -> DataFrame:
     account_current_df = (
@@ -97,7 +97,7 @@ def _build_gold_dim_customer(
     )
 
     stripe_customer_current_df = (
-        stripe_customer_df
+        stripe_customers_df
         .filter(col("is_current") == lit(True))
         .filter(col("stripe_customer_id") != lit("UNKNOWN"))
         .alias("s")
@@ -320,7 +320,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
         run_logs_table=cfg["run_logs_table"],
         pipeline_name=pipeline_name,
         dataset=dataset,
-        target_table=cfg["gold_customer_table"],
+        target_table=cfg["gold_customers_table"],
         run_id=run_id,
     )
 
@@ -328,7 +328,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
         logger.info("Gold dim_customer start | run_id=%s", run_id)
 
         account_df = spark.table(cfg["silver_account_table"])
-        stripe_customer_df = spark.table(cfg["silver_stripe_customer_table"])
+        stripe_customers_df = spark.table(cfg["silver_stripe_customers_table"])
 
         _validate_required_columns(
             df=account_df,
@@ -337,18 +337,18 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         _validate_required_columns(
-            df=stripe_customer_df,
-            required_columns=_get_required_stripe_customer_columns(),
-            table_name=cfg["silver_stripe_customer_table"],
+            df=stripe_customers_df,
+            required_columns=_get_required_stripe_customers_columns(),
+            table_name=cfg["silver_stripe_customers_table"],
         )
 
         account_current_count = account_df.filter(col("is_current") == lit(True)).count()
-        stripe_customer_current_count = stripe_customer_df.filter(col("is_current") == lit(True)).count()
-        rows_in = account_current_count + stripe_customer_current_count
+        stripe_customers_current_count = stripe_customers_df.filter(col("is_current") == lit(True)).count()
+        rows_in = account_current_count + stripe_customers_current_count
 
         dim_customer_df = _build_gold_dim_customer(
             account_df=account_df,
-            stripe_customer_df=stripe_customer_df,
+            stripe_customers_df=stripe_customers_df,
             run_id=run_id,
         ).persist()
 
@@ -373,7 +373,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
 
         _merge_gold_dim_customer(
             spark=spark,
-            target_table=cfg["gold_customer_table"],
+            target_table=cfg["gold_customers_table"],
             source_df=dim_customer_df,
         )
 

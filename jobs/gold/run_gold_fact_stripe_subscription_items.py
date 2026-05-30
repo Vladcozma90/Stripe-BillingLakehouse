@@ -9,8 +9,8 @@ from src.services.logger import setup_log
 
 logger = logging.getLogger(__name__)
 
-def job_run_gold_fact_subscription_item() -> None:
-    pipeline_name = "gold_fact_subscription_item"
+def job_run_gold_fact_subscription_items() -> None:
+    pipeline_name = "gold_fact_subscription_items"
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     
     setup_log(log_level)
@@ -33,5 +33,5 @@ def job_run_gold_fact_subscription_item() -> None:
         logger.info("Spark session stopped | pipeline_name=%s", pipeline_name)
 
 if __name__ == '__main__':
-    job_run_gold_fact_subscription_item()
+    job_run_gold_fact_subscription_items()
     

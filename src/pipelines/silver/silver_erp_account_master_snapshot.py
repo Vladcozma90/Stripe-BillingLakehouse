@@ -213,7 +213,6 @@ def _merge_conform_scd2(
         spark: SparkSession,
         conform_table: str,
         incoming_df: DataFrame,
-        run_id: str,
         key_columns: list[str],
 ) -> None:
 
@@ -286,7 +285,6 @@ def _merge_conform_scd2(
         [
             *(f"t.{c} <=> s.{c}" for c in key_columns),
             "t.is_current = true",
-            "s.scd_action = 'UPDATE'"
         ]
     )
 
@@ -294,7 +292,7 @@ def _merge_conform_scd2(
         conform_dt.alias("t")
         .merge(staged_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
+            condition="NOT (t.record_hash <=> s.record_hash) AND s.scd_action = 'UPDATE'",
             set={
                 "silver_effective_end_ts": "s.silver_effective_start_ts",
                 "updated_at": "current_timestamp()",
@@ -493,7 +491,6 @@ def run_silver_erp_account_master(spark: SparkSession, env: EnvConfig) -> None:
             spark=spark,
             conform_table=cfg["conform_table"],
             incoming_df=incoming_df,
-            run_id=run_id,
             key_columns=business_key
         )
 

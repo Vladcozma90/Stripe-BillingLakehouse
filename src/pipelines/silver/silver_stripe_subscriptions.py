@@ -280,7 +280,6 @@ def _merge_conform_scd2(
         [
             *(f"t.{c} <=> s.{c}" for c in key_columns),
             "t.is_current = true",
-            "s.scd_action = 'UPDATE'",
         ]
     )
 
@@ -288,12 +287,12 @@ def _merge_conform_scd2(
         conform_dt.alias("t")
         .merge(staged_df.alias("s"), condition=merge_condition)
         .whenMatchedUpdate(
-            condition="t.record_hash <> s.record_hash AND s.scd_action = 'UPDATE'",
+            condition="NOT (t.record_hash <=> s.record_hash) AND s.scd_action = 'UPDATE'",
             set={
                 "silver_effective_end_ts": "s.silver_effective_start_ts",
                 "updated_at": "s.updated_at",
                 "is_current": "false",
-                "etl_run_id": "s.etl_run_id"
+                "etl_run_id": "s.etl_run_id",
             }
         )
         .whenNotMatchedInsert(

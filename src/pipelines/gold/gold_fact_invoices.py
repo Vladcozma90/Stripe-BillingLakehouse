@@ -38,8 +38,8 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "gold_dim_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
         "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
-        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_invoices",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_stripe_invoices",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_invoices",
+        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_invoices",
     }
 
 
@@ -91,8 +91,8 @@ def _get_required_dim_customers_columns() -> list[str]:
         "account_id",
         "stripe_customer_id",
         "plan_code",
-        "silver_effective_start_ts",
-        "silver_effective_end_ts",
+        "stripe_silver_effective_start_ts",
+        "stripe_silver_effective_end_ts",
     ]
 
 
@@ -171,8 +171,8 @@ def _build_stage_gold_fact_invoices(
             col("stripe_customer_id").alias("dim_customer_stripe_customer_id"),
             col("account_id"),
             col("plan_code").alias("dim_customer_plan_code"),
-            col("silver_effective_start_ts").alias("customer_effective_start_ts"),
-            col("silver_effective_end_ts").alias("customer_effective_end_ts"),
+            col("stripe_silver_effective_start_ts").alias("customers_effective_start_ts"),
+            col("stripe_silver_effective_end_ts").alias("customers_effective_end_ts"),
         )
     )
 
@@ -204,10 +204,10 @@ def _build_stage_gold_fact_invoices(
             customers_df.alias("c"),
             (
                 (col("f.stripe_customer_id") == col("c.dim_customer_stripe_customer_id"))
-                & (col("f.created_ts") >= col("c.customer_effective_start_ts"))
+                & (col("f.created_ts") >= col("c.customers_effective_start_ts"))
                 & (
-                    (col("f.created_ts") < col("c.customer_effective_end_ts"))
-                    | col("c.customer_effective_end_ts").isNull()
+                    (col("f.created_ts") < col("c.customers_effective_end_ts"))
+                    | col("c.customers_effective_end_ts").isNull()
                 )
             ),
             how="left",

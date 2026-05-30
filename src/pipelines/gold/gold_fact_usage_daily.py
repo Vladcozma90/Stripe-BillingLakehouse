@@ -36,7 +36,7 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
 
         "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_erp_usage_daily",
 
-        "gold_dim_customer_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customer",
+        "gold_dim_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
         "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
         "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_usage_daily",
@@ -59,14 +59,14 @@ def _get_required_usage_columns() -> list[str]:
     ]
 
 
-def _get_required_dim_customer_columns() -> list[str]:
+def _get_required_dim_customers_columns() -> list[str]:
     return [
         "customer_sk",
         "account_id",
         "stripe_customer_id",
         "plan_code",
-        "silver_effective_start_ts",
-        "silver_effective_end_ts",
+        "account_silver_effective_start_ts",
+        "account_silver_effective_end_ts",
     ]
 
 
@@ -92,7 +92,7 @@ def _validate_required_columns(
 
 def _build_stage_gold_fact_usage_daily(
     silver_df: DataFrame,
-    dim_customer_df: DataFrame,
+    dim_customers_df: DataFrame,
     dim_plan_df: DataFrame,
     run_id: str,
 ) -> DataFrame:
@@ -110,14 +110,14 @@ def _build_stage_gold_fact_usage_daily(
     )
 
     customer_df = (
-        dim_customer_df
+        dim_customers_df
         .select(
             col("customer_sk"),
             col("account_id").alias("dim_customer_account_id"),
             col("stripe_customer_id"),
             col("plan_code").alias("dim_customer_plan_code"),
-            col("silver_effective_start_ts").alias("customer_effective_start_ts"),
-            col("silver_effective_end_ts").alias("customer_effective_end_ts"),
+            col("account_silver_effective_start_ts").alias("customers_effective_start_ts"),
+            col("account_silver_effective_end_ts").alias("customers_effective_end_ts"),
         )
     )
 
@@ -137,10 +137,10 @@ def _build_stage_gold_fact_usage_daily(
             customer_df.alias("c"),
             (
                 (col("f.account_id") == col("c.dim_customer_account_id"))
-                & (col("f.event_ts") >= col("c.customer_effective_start_ts"))
+                & (col("f.event_ts") >= col("c.customers_effective_start_ts"))
                 & (
-                    (col("f.event_ts") < col("c.customer_effective_end_ts"))
-                    | col("c.customer_effective_end_ts").isNull()
+                    (col("f.event_ts") < col("c.customers_effective_end_ts"))
+                    | col("c.customers_effective_end_ts").isNull()
                 )
             ),
             how="left",
@@ -309,7 +309,7 @@ def run_gold_fact_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
         logger.info("Gold fact_usage_daily start | run_id=%s", run_id)
 
         silver_df = spark.table(cfg["silver_current_table"])
-        dim_customer_df = spark.table(cfg["gold_dim_customer_table"])
+        dim_customers_df = spark.table(cfg["gold_dim_customers_table"])
         dim_plan_df = spark.table(cfg["gold_dim_plan_table"])
 
         _validate_required_columns(
@@ -319,9 +319,9 @@ def run_gold_fact_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         _validate_required_columns(
-            df=dim_customer_df,
-            required_columns=_get_required_dim_customer_columns(),
-            table_name=cfg["gold_dim_customer_table"],
+            df=dim_customers_df,
+            required_columns=_get_required_dim_customers_columns(),
+            table_name=cfg["gold_dim_customers_table"],
         )
 
         _validate_required_columns(
@@ -346,7 +346,7 @@ def run_gold_fact_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
         gold_df = _build_stage_gold_fact_usage_daily(
             silver_df=silver_df,
-            dim_customer_df=dim_customer_df,
+            dim_customers_df=dim_customers_df,
             dim_plan_df=dim_plan_df,
             run_id=run_id,
         ).persist()
