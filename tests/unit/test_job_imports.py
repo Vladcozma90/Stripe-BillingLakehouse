@@ -20,8 +20,15 @@ JOB_MODULES = [
     "jobs.silver.run_silver_stripe_subscription_items",
     "jobs.silver.run_silver_stripe_subscriptions",
 
-    # Gold
-    "jobs.gold.run_gold_dim_account_master",
+    # Gold dimensions
+    "jobs.gold.run_gold_dim_plan_catalog",
+    "jobs.gold.run_gold_dim_stripe_customers",
+    "jobs.gold.run_gold_dim_stripe_subscriptions",
+
+    # Gold facts
+    "jobs.gold.run_gold_fact_stripe_invoices",
+    "jobs.gold.run_gold_fact_stripe_subscription_items",
+    "jobs.gold.run_gold_fact_usage_daily",
 
     # Databricks smoke tests
     "tests.smoke_test.run_bootstrap_test",
