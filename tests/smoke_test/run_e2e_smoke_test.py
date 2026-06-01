@@ -58,9 +58,8 @@ def run_e2e_smoke_test() -> None:
 
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
 
-    # -------------------------------------------------------------------------
-    # 1. Landing-style source data
-    # -------------------------------------------------------------------------
+
+
     landing_df = spark.createDataFrame(
         [
             ("cus_001 ", " CUSTOMER_1@EXAMPLE.COM ", " us ", 100.00, started_at),
@@ -88,9 +87,7 @@ def run_e2e_smoke_test() -> None:
 
     logger.info("Landing step completed | table=%s | rows=%s", landing_table, landing_count)
 
-    # -------------------------------------------------------------------------
-    # 2. Bronze ingestion
-    # -------------------------------------------------------------------------
+
     bronze_df = (
         spark.table(landing_table)
         .withColumn("_bronze_ingest_ts", current_timestamp())
@@ -110,9 +107,9 @@ def run_e2e_smoke_test() -> None:
 
     logger.info("Bronze step completed | table=%s | rows=%s", bronze_table, bronze_count)
 
-    # -------------------------------------------------------------------------
-    # 3. Silver cleaning / standardization
-    # -------------------------------------------------------------------------
+
+
+
     silver_df = (
         spark.table(bronze_table)
         .select(
@@ -156,9 +153,9 @@ def run_e2e_smoke_test() -> None:
 
     logger.info("Silver step completed | table=%s | rows=%s", silver_table, silver_count)
 
-    # -------------------------------------------------------------------------
-    # 4. Gold aggregation
-    # -------------------------------------------------------------------------
+
+
+
     gold_df = (
         result_silver_df
         .groupBy("country_code")

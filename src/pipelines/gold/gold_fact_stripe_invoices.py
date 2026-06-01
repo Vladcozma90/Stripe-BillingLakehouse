@@ -32,32 +32,44 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
 
-        "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_subscription_items",
+        "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_invoices",
 
         "gold_dim_subscriptions_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_subscriptions",
         "gold_dim_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
         "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
-        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_subscription_items",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_subscription_items",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_invoices",
+        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_invoices",
     }
 
 
-def _get_required_subscription_item_columns() -> list[str]:
+def _get_required_invoice_columns() -> list[str]:
     return [
-        "subscription_item_id",
+        "invoice_id",
+        "stripe_customer_id",
         "subscription_id",
-        "price_id",
-        "product_id",
-        "item_currency",
-        "billing_interval",
-        "price_type",
-        "usage_type",
-        "quantity",
-        "unit_amount",
-        "item_created_ts",
-        "item_current_period_start_ts",
-        "item_current_period_end_ts",
+        "invoice_status",
+        "collection_method",
+        "currency",
+        "invoice_number",
+        "amount_due",
+        "amount_paid",
+        "amount_remaining",
+        "subtotal",
+        "subtotal_excluding_tax",
+        "total",
+        "attempt_count",
+        "is_attempted",
+        "is_livemode",
+        "auto_advance",
+        "created_ts",
+        "due_date_ts",
+        "period_start_ts",
+        "period_end_ts",
+        "status_finalized_ts",
+        "status_paid_ts",
+        "status_voided_ts",
+        "status_marked_uncollectible_ts",
         "api_extracted_ts",
         "etl_run_id",
     ]
@@ -104,7 +116,7 @@ def _validate_required_columns(
         raise ValueError(f"{table_name} missing required columns: {missing_columns}")
 
 
-def _build_stage_gold_fact_subscription_items(
+def _build_stage_gold_fact_invoices(
     silver_df: DataFrame,
     dim_subscriptions_df: DataFrame,
     dim_customers_df: DataFrame,
@@ -113,19 +125,31 @@ def _build_stage_gold_fact_subscription_items(
 ) -> DataFrame:
     stage_df = (
         silver_df
-        .withColumn("subscription_item_id", trim(col("subscription_item_id")).cast("string"))
+        .withColumn("invoice_id", trim(col("invoice_id")).cast("string"))
+        .withColumn("stripe_customer_id", trim(col("stripe_customer_id")).cast("string"))
         .withColumn("subscription_id", trim(col("subscription_id")).cast("string"))
-        .withColumn("price_id", trim(col("price_id")).cast("string"))
-        .withColumn("product_id", trim(col("product_id")).cast("string"))
-        .withColumn("item_currency", lower(trim(col("item_currency"))).cast("string"))
-        .withColumn("billing_interval", lower(trim(col("billing_interval"))).cast("string"))
-        .withColumn("price_type", lower(trim(col("price_type"))).cast("string"))
-        .withColumn("usage_type", lower(trim(col("usage_type"))).cast("string"))
-        .withColumn("quantity", col("quantity").cast("bigint"))
-        .withColumn("unit_amount", col("unit_amount").cast("bigint"))
-        .withColumn("item_created_ts", col("item_created_ts").cast("timestamp"))
-        .withColumn("item_current_period_start_ts", col("item_current_period_start_ts").cast("timestamp"))
-        .withColumn("item_current_period_end_ts", col("item_current_period_end_ts").cast("timestamp"))
+        .withColumn("invoice_status", lower(trim(col("invoice_status"))).cast("string"))
+        .withColumn("collection_method", lower(trim(col("collection_method"))).cast("string"))
+        .withColumn("currency", lower(trim(col("currency"))).cast("string"))
+        .withColumn("invoice_number", trim(col("invoice_number")).cast("string"))
+        .withColumn("amount_due", col("amount_due").cast("bigint"))
+        .withColumn("amount_paid", col("amount_paid").cast("bigint"))
+        .withColumn("amount_remaining", col("amount_remaining").cast("bigint"))
+        .withColumn("subtotal", col("subtotal").cast("bigint"))
+        .withColumn("subtotal_excluding_tax", col("subtotal_excluding_tax").cast("bigint"))
+        .withColumn("total", col("total").cast("bigint"))
+        .withColumn("attempt_count", col("attempt_count").cast("bigint"))
+        .withColumn("is_attempted", col("is_attempted").cast("boolean"))
+        .withColumn("is_livemode", col("is_livemode").cast("boolean"))
+        .withColumn("auto_advance", col("auto_advance").cast("boolean"))
+        .withColumn("created_ts", col("created_ts").cast("timestamp"))
+        .withColumn("due_date_ts", col("due_date_ts").cast("timestamp"))
+        .withColumn("period_start_ts", col("period_start_ts").cast("timestamp"))
+        .withColumn("period_end_ts", col("period_end_ts").cast("timestamp"))
+        .withColumn("status_finalized_ts", col("status_finalized_ts").cast("timestamp"))
+        .withColumn("status_paid_ts", col("status_paid_ts").cast("timestamp"))
+        .withColumn("status_voided_ts", col("status_voided_ts").cast("timestamp"))
+        .withColumn("status_marked_uncollectible_ts", col("status_marked_uncollectible_ts").cast("timestamp"))
         .withColumn("api_extracted_ts", col("api_extracted_ts").cast("timestamp"))
     )
 
@@ -135,12 +159,12 @@ def _build_stage_gold_fact_subscription_items(
             col("subscription_sk"),
             col("subscription_id").alias("dim_subscription_id"),
             col("stripe_customer_id").alias("dim_subscription_stripe_customer_id"),
-            col("silver_effective_start_ts").alias("subscriptions_effective_start_ts"),
-            col("silver_effective_end_ts").alias("subscriptions_effective_end_ts"),
+            col("silver_effective_start_ts").alias("subscription_effective_start_ts"),
+            col("silver_effective_end_ts").alias("subscription_effective_end_ts"),
         )
     )
 
-    customer_df = (
+    customers_df = (
         dim_customers_df
         .select(
             col("customer_sk"),
@@ -168,21 +192,21 @@ def _build_stage_gold_fact_subscription_items(
             subscription_df.alias("s"),
             (
                 (col("f.subscription_id") == col("s.dim_subscription_id"))
-                & (col("f.item_created_ts") >= col("s.subscriptions_effective_start_ts"))
+                & (col("f.created_ts") >= col("s.subscription_effective_start_ts"))
                 & (
-                    (col("f.item_created_ts") < col("s.subscriptions_effective_end_ts"))
-                    | col("s.subscriptions_effective_end_ts").isNull()
+                    (col("f.created_ts") < col("s.subscription_effective_end_ts"))
+                    | col("s.subscription_effective_end_ts").isNull()
                 )
             ),
             how="left",
         )
         .join(
-            customer_df.alias("c"),
+            customers_df.alias("c"),
             (
-                (col("s.dim_subscription_stripe_customer_id") == col("c.dim_customer_stripe_customer_id"))
-                & (col("f.item_created_ts") >= col("c.customers_effective_start_ts"))
+                (col("f.stripe_customer_id") == col("c.dim_customer_stripe_customer_id"))
+                & (col("f.created_ts") >= col("c.customers_effective_start_ts"))
                 & (
-                    (col("f.item_created_ts") < col("c.customers_effective_end_ts"))
+                    (col("f.created_ts") < col("c.customers_effective_end_ts"))
                     | col("c.customers_effective_end_ts").isNull()
                 )
             ),
@@ -192,9 +216,9 @@ def _build_stage_gold_fact_subscription_items(
             plan_df.alias("p"),
             (
                 (col("c.dim_customer_plan_code") == col("p.dim_plan_code"))
-                & (col("f.item_created_ts") >= col("p.plan_effective_start_ts"))
+                & (col("f.created_ts") >= col("p.plan_effective_start_ts"))
                 & (
-                    (col("f.item_created_ts") < col("p.plan_effective_end_ts"))
+                    (col("f.created_ts") < col("p.plan_effective_end_ts"))
                     | col("p.plan_effective_end_ts").isNull()
                 )
             ),
@@ -204,42 +228,53 @@ def _build_stage_gold_fact_subscription_items(
 
     fact_df = (
         joined_df
-        .withColumn("subscription_item_business_key", col("f.subscription_item_id"))
+        .withColumn("invoice_business_key", col("f.invoice_id"))
         .withColumn("subscription_sk", coalesce(col("s.subscription_sk"), lit(-1)).cast("bigint"))
         .withColumn("customer_sk", coalesce(col("c.customer_sk"), lit(-1)).cast("bigint"))
         .withColumn("plan_sk", coalesce(col("p.plan_sk"), lit(-1)).cast("bigint"))
-        .withColumn("stripe_customer_id", col("s.dim_subscription_stripe_customer_id").cast("string"))
         .withColumn("account_id", col("c.account_id").cast("string"))
         .withColumn("plan_code", col("c.dim_customer_plan_code").cast("string"))
         .withColumn("etl_run_id", lit(run_id).cast("string"))
         .withColumn("gold_processed_ts", current_timestamp())
         .withColumn("gold_processed_date", current_date())
         .select(
-            "subscription_item_business_key",
-            col("f.subscription_item_id").alias("subscription_item_id"),
+            "invoice_business_key",
+            col("f.invoice_id").alias("invoice_id"),
 
             "subscription_sk",
             "customer_sk",
             "plan_sk",
 
+            col("f.stripe_customer_id").alias("stripe_customer_id"),
             col("f.subscription_id").alias("subscription_id"),
-            "stripe_customer_id",
             "account_id",
             "plan_code",
 
-            col("f.price_id").alias("price_id"),
-            col("f.product_id").alias("product_id"),
-            col("f.item_currency").alias("item_currency"),
-            col("f.billing_interval").alias("billing_interval"),
-            col("f.price_type").alias("price_type"),
-            col("f.usage_type").alias("usage_type"),
+            col("f.invoice_status").alias("invoice_status"),
+            col("f.collection_method").alias("collection_method"),
+            col("f.currency").alias("currency"),
+            col("f.invoice_number").alias("invoice_number"),
 
-            col("f.quantity").alias("quantity"),
-            col("f.unit_amount").alias("unit_amount"),
+            col("f.amount_due").alias("amount_due"),
+            col("f.amount_paid").alias("amount_paid"),
+            col("f.amount_remaining").alias("amount_remaining"),
+            col("f.subtotal").alias("subtotal"),
+            col("f.subtotal_excluding_tax").alias("subtotal_excluding_tax"),
+            col("f.total").alias("total"),
 
-            col("f.item_created_ts").alias("item_created_ts"),
-            col("f.item_current_period_start_ts").alias("item_current_period_start_ts"),
-            col("f.item_current_period_end_ts").alias("item_current_period_end_ts"),
+            col("f.attempt_count").alias("attempt_count"),
+            col("f.is_attempted").alias("is_attempted"),
+            col("f.is_livemode").alias("is_livemode"),
+            col("f.auto_advance").alias("auto_advance"),
+
+            col("f.created_ts").alias("created_ts"),
+            col("f.due_date_ts").alias("due_date_ts"),
+            col("f.period_start_ts").alias("period_start_ts"),
+            col("f.period_end_ts").alias("period_end_ts"),
+            col("f.status_finalized_ts").alias("status_finalized_ts"),
+            col("f.status_paid_ts").alias("status_paid_ts"),
+            col("f.status_voided_ts").alias("status_voided_ts"),
+            col("f.status_marked_uncollectible_ts").alias("status_marked_uncollectible_ts"),
             col("f.api_extracted_ts").alias("api_extracted_ts"),
 
             "etl_run_id",
@@ -255,26 +290,37 @@ def _build_stage_gold_fact_subscription_items(
             sha2(
                 concat_ws(
                     "||",
-                    coalesce(col("subscription_item_business_key").cast("string"), lit("")),
-                    coalesce(col("subscription_item_id").cast("string"), lit("")),
+                    coalesce(col("invoice_business_key").cast("string"), lit("")),
+                    coalesce(col("invoice_id").cast("string"), lit("")),
                     coalesce(col("subscription_sk").cast("string"), lit("")),
                     coalesce(col("customer_sk").cast("string"), lit("")),
                     coalesce(col("plan_sk").cast("string"), lit("")),
-                    coalesce(col("subscription_id").cast("string"), lit("")),
                     coalesce(col("stripe_customer_id").cast("string"), lit("")),
+                    coalesce(col("subscription_id").cast("string"), lit("")),
                     coalesce(col("account_id").cast("string"), lit("")),
                     coalesce(col("plan_code").cast("string"), lit("")),
-                    coalesce(col("price_id").cast("string"), lit("")),
-                    coalesce(col("product_id").cast("string"), lit("")),
-                    coalesce(col("item_currency").cast("string"), lit("")),
-                    coalesce(col("billing_interval").cast("string"), lit("")),
-                    coalesce(col("price_type").cast("string"), lit("")),
-                    coalesce(col("usage_type").cast("string"), lit("")),
-                    coalesce(col("quantity").cast("string"), lit("")),
-                    coalesce(col("unit_amount").cast("string"), lit("")),
-                    coalesce(col("item_created_ts").cast("string"), lit("")),
-                    coalesce(col("item_current_period_start_ts").cast("string"), lit("")),
-                    coalesce(col("item_current_period_end_ts").cast("string"), lit("")),
+                    coalesce(col("invoice_status").cast("string"), lit("")),
+                    coalesce(col("collection_method").cast("string"), lit("")),
+                    coalesce(col("currency").cast("string"), lit("")),
+                    coalesce(col("invoice_number").cast("string"), lit("")),
+                    coalesce(col("amount_due").cast("string"), lit("")),
+                    coalesce(col("amount_paid").cast("string"), lit("")),
+                    coalesce(col("amount_remaining").cast("string"), lit("")),
+                    coalesce(col("subtotal").cast("string"), lit("")),
+                    coalesce(col("subtotal_excluding_tax").cast("string"), lit("")),
+                    coalesce(col("total").cast("string"), lit("")),
+                    coalesce(col("attempt_count").cast("string"), lit("")),
+                    coalesce(col("is_attempted").cast("string"), lit("")),
+                    coalesce(col("is_livemode").cast("string"), lit("")),
+                    coalesce(col("auto_advance").cast("string"), lit("")),
+                    coalesce(col("created_ts").cast("string"), lit("")),
+                    coalesce(col("due_date_ts").cast("string"), lit("")),
+                    coalesce(col("period_start_ts").cast("string"), lit("")),
+                    coalesce(col("period_end_ts").cast("string"), lit("")),
+                    coalesce(col("status_finalized_ts").cast("string"), lit("")),
+                    coalesce(col("status_paid_ts").cast("string"), lit("")),
+                    coalesce(col("status_voided_ts").cast("string"), lit("")),
+                    coalesce(col("status_marked_uncollectible_ts").cast("string"), lit("")),
                 ),
                 256,
             )
@@ -282,14 +328,14 @@ def _build_stage_gold_fact_subscription_items(
     )
 
 
-def _merge_gold_fact_subscription_items(
+def _merge_gold_fact_invoices(
     spark: SparkSession,
     target_table: str,
     source_df: DataFrame,
 ) -> None:
     gold_dt = DeltaTable.forName(spark, target_table)
 
-    merge_condition = "t.subscription_item_business_key <=> s.subscription_item_business_key"
+    merge_condition = "t.invoice_business_key <=> s.invoice_business_key"
 
     (
         gold_dt.alias("t")
@@ -297,25 +343,36 @@ def _merge_gold_fact_subscription_items(
         .whenMatchedUpdate(
             condition="NOT (t.record_hash <=> s.record_hash)",
             set={
-                "subscription_item_id": "s.subscription_item_id",
+                "invoice_id": "s.invoice_id",
                 "subscription_sk": "s.subscription_sk",
                 "customer_sk": "s.customer_sk",
                 "plan_sk": "s.plan_sk",
-                "subscription_id": "s.subscription_id",
                 "stripe_customer_id": "s.stripe_customer_id",
+                "subscription_id": "s.subscription_id",
                 "account_id": "s.account_id",
                 "plan_code": "s.plan_code",
-                "price_id": "s.price_id",
-                "product_id": "s.product_id",
-                "item_currency": "s.item_currency",
-                "billing_interval": "s.billing_interval",
-                "price_type": "s.price_type",
-                "usage_type": "s.usage_type",
-                "quantity": "s.quantity",
-                "unit_amount": "s.unit_amount",
-                "item_created_ts": "s.item_created_ts",
-                "item_current_period_start_ts": "s.item_current_period_start_ts",
-                "item_current_period_end_ts": "s.item_current_period_end_ts",
+                "invoice_status": "s.invoice_status",
+                "collection_method": "s.collection_method",
+                "currency": "s.currency",
+                "invoice_number": "s.invoice_number",
+                "amount_due": "s.amount_due",
+                "amount_paid": "s.amount_paid",
+                "amount_remaining": "s.amount_remaining",
+                "subtotal": "s.subtotal",
+                "subtotal_excluding_tax": "s.subtotal_excluding_tax",
+                "total": "s.total",
+                "attempt_count": "s.attempt_count",
+                "is_attempted": "s.is_attempted",
+                "is_livemode": "s.is_livemode",
+                "auto_advance": "s.auto_advance",
+                "created_ts": "s.created_ts",
+                "due_date_ts": "s.due_date_ts",
+                "period_start_ts": "s.period_start_ts",
+                "period_end_ts": "s.period_end_ts",
+                "status_finalized_ts": "s.status_finalized_ts",
+                "status_paid_ts": "s.status_paid_ts",
+                "status_voided_ts": "s.status_voided_ts",
+                "status_marked_uncollectible_ts": "s.status_marked_uncollectible_ts",
                 "api_extracted_ts": "s.api_extracted_ts",
                 "etl_run_id": "s.etl_run_id",
                 "gold_processed_ts": "s.gold_processed_ts",
@@ -325,26 +382,37 @@ def _merge_gold_fact_subscription_items(
         )
         .whenNotMatchedInsert(
             values={
-                "subscription_item_business_key": "s.subscription_item_business_key",
-                "subscription_item_id": "s.subscription_item_id",
+                "invoice_business_key": "s.invoice_business_key",
+                "invoice_id": "s.invoice_id",
                 "subscription_sk": "s.subscription_sk",
                 "customer_sk": "s.customer_sk",
                 "plan_sk": "s.plan_sk",
-                "subscription_id": "s.subscription_id",
                 "stripe_customer_id": "s.stripe_customer_id",
+                "subscription_id": "s.subscription_id",
                 "account_id": "s.account_id",
                 "plan_code": "s.plan_code",
-                "price_id": "s.price_id",
-                "product_id": "s.product_id",
-                "item_currency": "s.item_currency",
-                "billing_interval": "s.billing_interval",
-                "price_type": "s.price_type",
-                "usage_type": "s.usage_type",
-                "quantity": "s.quantity",
-                "unit_amount": "s.unit_amount",
-                "item_created_ts": "s.item_created_ts",
-                "item_current_period_start_ts": "s.item_current_period_start_ts",
-                "item_current_period_end_ts": "s.item_current_period_end_ts",
+                "invoice_status": "s.invoice_status",
+                "collection_method": "s.collection_method",
+                "currency": "s.currency",
+                "invoice_number": "s.invoice_number",
+                "amount_due": "s.amount_due",
+                "amount_paid": "s.amount_paid",
+                "amount_remaining": "s.amount_remaining",
+                "subtotal": "s.subtotal",
+                "subtotal_excluding_tax": "s.subtotal_excluding_tax",
+                "total": "s.total",
+                "attempt_count": "s.attempt_count",
+                "is_attempted": "s.is_attempted",
+                "is_livemode": "s.is_livemode",
+                "auto_advance": "s.auto_advance",
+                "created_ts": "s.created_ts",
+                "due_date_ts": "s.due_date_ts",
+                "period_start_ts": "s.period_start_ts",
+                "period_end_ts": "s.period_end_ts",
+                "status_finalized_ts": "s.status_finalized_ts",
+                "status_paid_ts": "s.status_paid_ts",
+                "status_voided_ts": "s.status_voided_ts",
+                "status_marked_uncollectible_ts": "s.status_marked_uncollectible_ts",
                 "api_extracted_ts": "s.api_extracted_ts",
                 "etl_run_id": "s.etl_run_id",
                 "gold_processed_ts": "s.gold_processed_ts",
@@ -356,12 +424,12 @@ def _merge_gold_fact_subscription_items(
     )
 
 
-def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> None:
-    pipeline_name = "gold_fact_stripe_subscription_items"
-    dataset = "fact_stripe_subscription_items"
+def run_gold_fact_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
+    pipeline_name = "gold_fact_stripe_invoices"
+    dataset = "fact_stripe_invoices"
     run_id = uuid.uuid4().hex
 
-    cfg = _build_config(env)
+    cfg = _build_config(env=env)
 
     rows_in = 0
     rows_out = 0
@@ -380,16 +448,16 @@ def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> Non
     )
 
     try:
-        logger.info("Gold fact_stripe_subscription_items start | run_id=%s", run_id)
+        logger.info("Gold fact_stripe_invoices start | run_id=%s", run_id)
 
         silver_df = spark.table(cfg["silver_current_table"])
         dim_subscriptions_df = spark.table(cfg["gold_dim_subscriptions_table"])
-        dim_customers_df = spark.table(cfg["gold_dim_customers_table"])
+        dim_customers_df = spark.table(cfg["gold_dim_customer_table"])
         dim_plan_df = spark.table(cfg["gold_dim_plan_table"])
 
         _validate_required_columns(
             df=silver_df,
-            required_columns=_get_required_subscription_item_columns(),
+            required_columns=_get_required_invoice_columns(),
             table_name=cfg["silver_current_table"],
         )
 
@@ -402,7 +470,7 @@ def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> Non
         _validate_required_columns(
             df=dim_customers_df,
             required_columns=_get_required_dim_customers_columns(),
-            table_name=cfg["gold_dim_customers_table"],
+            table_name=cfg["gold_dim_customer_table"],
         )
 
         _validate_required_columns(
@@ -420,12 +488,13 @@ def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> Non
                 run_id=run_id,
                 last_watermark_ts=None,
             )
-            logger.info("No data in silver current subscription items. Exiting.")
+
+            logger.info("No data in silver current invoices. Exiting.")
             return
 
         rows_in = silver_df.count()
 
-        gold_df = _build_stage_gold_fact_subscription_items(
+        gold_df = _build_stage_gold_fact_invoices(
             silver_df=silver_df,
             dim_subscriptions_df=dim_subscriptions_df,
             dim_customers_df=dim_customers_df,
@@ -449,10 +518,10 @@ def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> Non
                 last_watermark_ts=None,
             )
 
-            logger.info("No subscription item rows to merge | run_id=%s", run_id)
+            logger.info("No invoice rows to merge | run_id=%s", run_id)
             return
 
-        _merge_gold_fact_subscription_items(
+        _merge_gold_fact_invoices(
             spark=spark,
             target_table=cfg["gold_fact_table"],
             source_df=gold_df,
@@ -472,7 +541,7 @@ def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> Non
         )
 
         logger.info(
-            "Gold fact_stripe_subscription_items SUCCESS | rows_in=%d | rows_out=%d",
+            "Gold fact_stripe_invoices SUCCESS | rows_in=%d | rows_out=%d",
             rows_in,
             rows_out,
         )
@@ -492,7 +561,7 @@ def run_gold_fact_subscription_items(spark: SparkSession, env: EnvConfig) -> Non
             last_watermark_ts=None,
         )
 
-        logger.exception("Gold fact_stripe_subscription_items FAILED | run_id=%s", run_id)
+        logger.exception("Gold fact_stripe_invoices FAILED | run_id=%s", run_id)
         raise
 
     finally:

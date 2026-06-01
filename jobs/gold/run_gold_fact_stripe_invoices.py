@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import os
 from pyspark.sql import SparkSession
-from src.pipelines.gold.gold_fact_invoices import run_gold_fact_invoices
+from pipelines.gold.gold_fact_stripe_invoices import run_gold_fact_stripe_invoices
 from src.services.envs import load_envs
 from src.services.logger import setup_log
 
@@ -21,7 +21,7 @@ def job_run_gold_fact_stripe_invoices() -> None:
     spark = SparkSession.builder.appName(pipeline_name).getOrCreate()
 
     try:
-        run_gold_fact_invoices(spark=spark, env=env)
+        run_gold_fact_stripe_invoices(spark=spark, env=env)
         logger.info("Job success | pipeline_name=%s", pipeline_name)
 
     except Exception:

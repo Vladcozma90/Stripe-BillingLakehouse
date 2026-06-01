@@ -2,15 +2,15 @@ from __future__ import annotations
 import logging
 import os
 from pyspark.sql import SparkSession
-from src.pipelines.gold.gold_fact_subscription_items import run_gold_fact_subscription_items
+from pipelines.gold.gold_fact_stripe_subscription_items import run_gold_fact_stripe_subscription_items
 from src.services.envs import load_envs
 from src.services.logger import setup_log
 
 
 logger = logging.getLogger(__name__)
 
-def job_run_gold_fact_subscription_items() -> None:
-    pipeline_name = "gold_fact_subscription_items"
+def job_run_gold_fact_stripe_subscription_items() -> None:
+    pipeline_name = "gold_fact_stripe_subscription_items"
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     
     setup_log(log_level)
@@ -21,7 +21,7 @@ def job_run_gold_fact_subscription_items() -> None:
     spark = SparkSession.builder.appName(pipeline_name).getOrCreate()
 
     try:
-        run_gold_fact_subscription_items(spark=spark, env=env)
+        run_gold_fact_stripe_subscription_items(spark=spark, env=env)
         logger.info("Job success | pipeline_name=%s", pipeline_name)
 
     except Exception:
@@ -33,5 +33,5 @@ def job_run_gold_fact_subscription_items() -> None:
         logger.info("Spark session stopped | pipeline_name=%s", pipeline_name)
 
 if __name__ == '__main__':
-    job_run_gold_fact_subscription_items()
+    job_run_gold_fact_stripe_subscription_items()
     
