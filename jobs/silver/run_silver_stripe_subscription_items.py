@@ -28,9 +28,5 @@ def job_run_silver_stripe_subscription_items() -> None:
         logger.info("Job failed | pipeline_name=%s", pipeline_name)
         raise
 
-    finally:
-        spark.stop()
-        logger.info("Spark session stopped | pipeline_name=%s", pipeline_name)
-
 if __name__ == '__main__':
     job_run_silver_stripe_subscription_items()

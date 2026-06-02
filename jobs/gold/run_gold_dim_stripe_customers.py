@@ -28,10 +28,6 @@ def job_run_gold_dim_stripe_customers() -> None:
         logger.exception("Job failed | pipeline_name=%s", pipeline_name)
         raise
 
-    finally:
-        spark.stop()
-        logger.info("Spark session stopped | pipeline_name=%s", pipeline_name)
-
 if __name__ == '__main__':
     job_run_gold_dim_stripe_customers()
     

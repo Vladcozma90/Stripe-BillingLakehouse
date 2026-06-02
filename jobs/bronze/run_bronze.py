@@ -36,9 +36,5 @@ def job_run_bronze() -> None:
         logger.exception("Job failed | pipeline_name=%s", pipeline_name)
         raise
 
-    finally:
-        spark.stop()
-        logger.info("spark session stopped | pipeline_name=%s", pipeline_name)
-
 if __name__ == '__main__':
     job_run_bronze()

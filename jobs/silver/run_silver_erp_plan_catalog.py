@@ -28,10 +28,6 @@ def job_run_silver_erp_plan_catalog() -> None:
         logger.exception("Job failed | pipeline_name=%s", pipeline_name)
         raise
 
-    finally:
-        spark.stop()
-        logger.info("Spark session stopped | pipeline_name=%s", pipeline_name)
-
 if __name__ == '__main__':
     job_run_silver_erp_plan_catalog()
 
