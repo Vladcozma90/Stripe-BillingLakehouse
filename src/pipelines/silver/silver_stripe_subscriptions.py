@@ -280,6 +280,7 @@ def _merge_conform_scd2(
         [
             *(f"t.{c} <=> s.{c}" for c in key_columns),
             "t.is_current = true",
+            "s.scd_action = 'UPDATE'",
         ]
     )
 
