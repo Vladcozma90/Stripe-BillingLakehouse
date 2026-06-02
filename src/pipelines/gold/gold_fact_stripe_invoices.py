@@ -452,7 +452,7 @@ def run_gold_fact_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
 
         silver_df = spark.table(cfg["silver_current_table"])
         dim_subscriptions_df = spark.table(cfg["gold_dim_subscriptions_table"])
-        dim_customers_df = spark.table(cfg["gold_dim_customer_table"])
+        dim_customers_df = spark.table(cfg["gold_dim_customers_table"])
         dim_plan_df = spark.table(cfg["gold_dim_plan_table"])
 
         _validate_required_columns(
@@ -470,7 +470,7 @@ def run_gold_fact_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
         _validate_required_columns(
             df=dim_customers_df,
             required_columns=_get_required_dim_customers_columns(),
-            table_name=cfg["gold_dim_customer_table"],
+            table_name=cfg["gold_dim_customers_table"],
         )
 
         _validate_required_columns(
