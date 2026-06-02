@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import os
 from pyspark.sql import SparkSession
-from src.pipelines.gold.gold_dim_subscriptions import run_gold_dim_subscriptions
+from src.pipelines.gold.gold_dim_stripe_subscriptions import run_gold_dim_subscriptions
 from src.services.envs import load_envs
 from src.services.logger import setup_log
 
@@ -10,7 +10,7 @@ from src.services.logger import setup_log
 logger = logging.getLogger(__name__)
 
 def job_run_gold_dim_subscriptions() -> None:
-    pipeline_name = "gold_dim_subscriptions"
+    pipeline_name = "gold_dim_stripe_subscriptions"
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
     
     setup_log(log_level)

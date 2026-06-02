@@ -34,12 +34,11 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
 
         "silver_current_table": f"{env.catalog}.{env.schemas['silver']}.s_current_stripe_invoices",
 
-        "gold_dim_subscriptions_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_subscriptions",
+        "gold_dim_stripe_subscriptions_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_subscriptions",
         "gold_dim_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
         "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
-        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_invoices",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_invoices",
+        "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_stripe_invoices",
     }
 
 

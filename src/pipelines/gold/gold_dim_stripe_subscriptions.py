@@ -33,9 +33,8 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
         "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_subscriptions",
-        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_subscriptions",
-
-        "gold_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_subscriptions",
+        
+        "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_subscriptions",
     }
 
 

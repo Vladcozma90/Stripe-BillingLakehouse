@@ -31,7 +31,6 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "silver_stripe_customers_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_customers",
 
         "gold_customers_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_customers",
-        "gold_customer_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_dim_customers",
     }
 
 

@@ -40,7 +40,6 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
         "gold_dim_plan_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
 
         "gold_fact_table": f"{env.catalog}.{env.schemas['gold']}.g_fact_usage_daily",
-        "gold_fact_path": f"{env.gold_base_path}/{env.catalog}/{env.schemas['gold']}/g_fact_usage_daily",
     }
 
 

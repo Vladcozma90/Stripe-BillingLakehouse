@@ -197,7 +197,7 @@ Expected Gold dimensions:
 ```text
 g_dim_customers
 g_dim_plan_catalog
-g_dim_subscriptions
+g_dim_stripe_subscriptions
 ```
 
 Expected Gold facts:
