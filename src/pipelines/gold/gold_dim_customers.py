@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 import logging
 
@@ -11,6 +13,10 @@ from pyspark.sql.functions import (
     current_date,
     sha2,
     concat_ws,
+    to_timestamp,
+    trim,
+    upper,
+    lower,
 )
 
 from src.services.envs import EnvConfig
@@ -88,25 +94,65 @@ def _build_gold_dim_customer(
     stripe_customers_df: DataFrame,
     run_id: str,
 ) -> DataFrame:
-    account_current_df = (
+    high_ts = to_timestamp(lit("9999-12-31 00:00:00"))
+
+    account_versions_df = (
         account_df
-        .filter(col("is_current") == lit(True))
+        .withColumn("account_id", trim(col("account_id")).cast("string"))
+        .withColumn("stripe_customer_id", trim(col("stripe_customer_id")).cast("string"))
+        .withColumn("customer_name", trim(col("customer_name")).cast("string"))
+        .withColumn("email", lower(trim(col("email"))).cast("string"))
+        .withColumn("plan_code", trim(col("plan_code")).cast("string"))
+        .withColumn("segment", trim(col("segment")).cast("string"))
+        .withColumn("country_code", upper(trim(col("country_code"))).cast("string"))
+        .withColumn("region", trim(col("region")).cast("string"))
+        .withColumn("account_created_date", col("account_created_at_raw").cast("date"))
+        .withColumn("account_status", trim(col("status")).cast("string"))
+        .withColumn("churned_date", col("churned_at_raw").cast("date"))
+        .withColumn("account_source_system", trim(col("source_system")).cast("string"))
+        .withColumn("account_snapshot_date", col("snapshot_dt").cast("date"))
+        .withColumn("account_silver_effective_start_ts", col("silver_effective_start_ts").cast("timestamp"))
+        .withColumn("account_silver_effective_end_ts", col("silver_effective_end_ts").cast("timestamp"))
         .filter(col("account_id") != lit("UNKNOWN"))
         .alias("a")
     )
 
-    stripe_customer_current_df = (
+    stripe_customer_versions_df = (
         stripe_customers_df
-        .filter(col("is_current") == lit(True))
+        .withColumn("stripe_customer_id", trim(col("stripe_customer_id")).cast("string"))
+        .withColumn("stripe_email", lower(trim(col("email"))).cast("string"))
+        .withColumn("stripe_currency", upper(trim(col("currency"))).cast("string"))
+        .withColumn("stripe_description", trim(col("description")).cast("string"))
+        .withColumn("stripe_order_id", trim(col("order_id")).cast("string"))
+        .withColumn("stripe_customer_created_ts", col("customer_created_ts").cast("timestamp"))
+        .withColumn("is_delinquent", col("is_delinquent").cast("boolean"))
+        .withColumn("is_livemode", col("is_livemode").cast("boolean"))
+        .withColumn("stripe_api_extracted_ts", col("api_extracted_ts").cast("timestamp"))
+        .withColumn("stripe_silver_effective_start_ts", col("silver_effective_start_ts").cast("timestamp"))
+        .withColumn("stripe_silver_effective_end_ts", col("silver_effective_end_ts").cast("timestamp"))
         .filter(col("stripe_customer_id") != lit("UNKNOWN"))
         .alias("s")
     )
 
+    join_condition = (
+        (col("a.stripe_customer_id") == col("s.stripe_customer_id"))
+        &
+        (
+            col("a.account_silver_effective_start_ts")
+            < coalesce(col("s.stripe_silver_effective_end_ts"), high_ts)
+        )
+        &
+        (
+            coalesce(col("a.account_silver_effective_end_ts"), high_ts)
+            > col("s.stripe_silver_effective_start_ts")
+        )
+    )
+
     joined_df = (
-        account_current_df
+        account_versions_df
         .join(
-            stripe_customer_current_df,
-            on=col("a.stripe_customer_id") == col("s.stripe_customer_id"),
+            stripe_customer_versions_df,
+            on=join_condition,
             how="left",
         )
     )
@@ -114,35 +160,35 @@ def _build_gold_dim_customer(
     dim_df = (
         joined_df
         .select(
-            col("a.account_id").cast("string").alias("account_id"),
-            col("a.stripe_customer_id").cast("string").alias("stripe_customer_id"),
+            col("a.account_id").alias("account_id"),
+            col("a.stripe_customer_id").alias("stripe_customer_id"),
 
-            col("a.customer_name").cast("string").alias("customer_name"),
-            coalesce(col("a.email"), col("s.email")).cast("string").alias("email"),
+            col("a.customer_name").alias("customer_name"),
+            coalesce(col("a.email"), col("s.stripe_email")).alias("email"),
 
-            col("a.plan_code").cast("string").alias("plan_code"),
-            col("a.segment").cast("string").alias("segment"),
-            col("a.country_code").cast("string").alias("country_code"),
-            col("a.region").cast("string").alias("region"),
+            col("a.plan_code").alias("plan_code"),
+            col("a.segment").alias("segment"),
+            col("a.country_code").alias("country_code"),
+            col("a.region").alias("region"),
 
-            col("a.account_created_at_raw").cast("date").alias("account_created_date"),
-            col("a.status").cast("string").alias("account_status"),
-            col("a.churned_at_raw").cast("date").alias("churned_date"),
-            col("a.source_system").cast("string").alias("account_source_system"),
-            col("a.snapshot_dt").cast("date").alias("account_snapshot_date"),
+            col("a.account_created_date").alias("account_created_date"),
+            col("a.account_status").alias("account_status"),
+            col("a.churned_date").alias("churned_date"),
+            col("a.account_source_system").alias("account_source_system"),
+            col("a.account_snapshot_date").alias("account_snapshot_date"),
 
-            col("s.currency").cast("string").alias("stripe_currency"),
-            col("s.description").cast("string").alias("stripe_description"),
-            col("s.order_id").cast("string").alias("stripe_order_id"),
-            col("s.customer_created_ts").cast("timestamp").alias("stripe_customer_created_ts"),
-            col("s.is_delinquent").cast("boolean").alias("is_delinquent"),
-            col("s.is_livemode").cast("boolean").alias("is_livemode"),
-            col("s.api_extracted_ts").cast("timestamp").alias("stripe_api_extracted_ts"),
+            col("s.stripe_currency").alias("stripe_currency"),
+            col("s.stripe_description").alias("stripe_description"),
+            col("s.stripe_order_id").alias("stripe_order_id"),
+            col("s.stripe_customer_created_ts").alias("stripe_customer_created_ts"),
+            col("s.is_delinquent").alias("is_delinquent"),
+            col("s.is_livemode").alias("is_livemode"),
+            col("s.stripe_api_extracted_ts").alias("stripe_api_extracted_ts"),
 
-            col("a.silver_effective_start_ts").cast("timestamp").alias("account_silver_effective_start_ts"),
-            col("a.silver_effective_end_ts").cast("timestamp").alias("account_silver_effective_end_ts"),
-            col("s.silver_effective_start_ts").cast("timestamp").alias("stripe_silver_effective_start_ts"),
-            col("s.silver_effective_end_ts").cast("timestamp").alias("stripe_silver_effective_end_ts"),
+            col("a.account_silver_effective_start_ts").alias("account_silver_effective_start_ts"),
+            col("a.account_silver_effective_end_ts").alias("account_silver_effective_end_ts"),
+            col("s.stripe_silver_effective_start_ts").alias("stripe_silver_effective_start_ts"),
+            col("s.stripe_silver_effective_end_ts").alias("stripe_silver_effective_end_ts"),
 
             lit(run_id).cast("string").alias("etl_run_id"),
             current_timestamp().alias("gold_processed_ts"),
@@ -154,7 +200,7 @@ def _build_gold_dim_customer(
         dim_df
         .withColumn(
             "customer_business_key",
-            coalesce(col("account_id"), col("stripe_customer_id"))
+            coalesce(col("account_id"), col("stripe_customer_id")),
         )
         .withColumn(
             "record_hash",
@@ -181,6 +227,10 @@ def _build_gold_dim_customer(
                     coalesce(col("is_delinquent").cast("string"), lit("")),
                     coalesce(col("is_livemode").cast("string"), lit("")),
                     coalesce(col("stripe_api_extracted_ts").cast("string"), lit("")),
+                    coalesce(col("account_silver_effective_start_ts").cast("string"), lit("")),
+                    coalesce(col("account_silver_effective_end_ts").cast("string"), lit("")),
+                    coalesce(col("stripe_silver_effective_start_ts").cast("string"), lit("")),
+                    coalesce(col("stripe_silver_effective_end_ts").cast("string"), lit("")),
                 ),
                 256,
             )
@@ -216,7 +266,15 @@ def _build_gold_dim_customer(
             "gold_processed_date",
             "record_hash",
         )
+        .dropDuplicates(
+            [
+                "customer_business_key",
+                "account_silver_effective_start_ts",
+                "stripe_silver_effective_start_ts",
+            ]
+        )
     )
+
 
 def _merge_gold_dim_customer(
     spark: SparkSession,
@@ -225,7 +283,13 @@ def _merge_gold_dim_customer(
 ) -> None:
     target_dt = DeltaTable.forName(spark, target_table)
 
-    merge_condition = "t.customer_business_key <=> s.customer_business_key"
+    merge_condition = " AND ".join(
+        [
+            "t.customer_business_key <=> s.customer_business_key",
+            "t.account_silver_effective_start_ts <=> s.account_silver_effective_start_ts",
+            "t.stripe_silver_effective_start_ts <=> s.stripe_silver_effective_start_ts",
+        ]
+    )
 
     (
         target_dt.alias("t")
@@ -253,9 +317,7 @@ def _merge_gold_dim_customer(
                 "is_delinquent": "s.is_delinquent",
                 "is_livemode": "s.is_livemode",
                 "stripe_api_extracted_ts": "s.stripe_api_extracted_ts",
-                "account_silver_effective_start_ts": "s.account_silver_effective_start_ts",
                 "account_silver_effective_end_ts": "s.account_silver_effective_end_ts",
-                "stripe_silver_effective_start_ts": "s.stripe_silver_effective_start_ts",
                 "stripe_silver_effective_end_ts": "s.stripe_silver_effective_end_ts",
                 "etl_run_id": "s.etl_run_id",
                 "gold_processed_ts": "s.gold_processed_ts",
@@ -341,9 +403,15 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
             table_name=cfg["silver_stripe_customers_table"],
         )
 
-        account_current_count = account_df.filter(col("is_current") == lit(True)).count()
-        stripe_customers_current_count = stripe_customers_df.filter(col("is_current") == lit(True)).count()
-        rows_in = account_current_count + stripe_customers_current_count
+        account_count = account_df.filter(
+            trim(col("account_id")) != lit("UNKNOWN")
+        ).count()
+
+        stripe_customers_count = stripe_customers_df.filter(
+            trim(col("stripe_customer_id")) != lit("UNKNOWN")
+        ).count()
+
+        rows_in = account_count + stripe_customers_count
 
         dim_customer_df = _build_gold_dim_customer(
             account_df=account_df,
@@ -418,4 +486,8 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
             try:
                 dim_customer_df.unpersist()
             except Exception as e:
-                logger.warning("Failed to unpersist dim_customer_df: %s | run_id=%s", e, run_id)
+                logger.warning(
+                    "Failed to unpersist dim_customer_df: %s | run_id=%s",
+                    e,
+                    run_id,
+                )

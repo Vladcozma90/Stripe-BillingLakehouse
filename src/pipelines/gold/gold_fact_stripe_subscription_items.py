@@ -9,6 +9,7 @@ from pyspark.sql.functions import (
     col,
     trim,
     lower,
+    upper,
     current_timestamp,
     current_date,
     lit,
@@ -116,7 +117,7 @@ def _build_stage_gold_fact_subscription_items(
         .withColumn("subscription_id", trim(col("subscription_id")).cast("string"))
         .withColumn("price_id", trim(col("price_id")).cast("string"))
         .withColumn("product_id", trim(col("product_id")).cast("string"))
-        .withColumn("item_currency", lower(trim(col("item_currency"))).cast("string"))
+        .withColumn("item_currency", upper(trim(col("item_currency"))).cast("string"))
         .withColumn("billing_interval", lower(trim(col("billing_interval"))).cast("string"))
         .withColumn("price_type", lower(trim(col("price_type"))).cast("string"))
         .withColumn("usage_type", lower(trim(col("usage_type"))).cast("string"))
@@ -126,6 +127,7 @@ def _build_stage_gold_fact_subscription_items(
         .withColumn("item_current_period_start_ts", col("item_current_period_start_ts").cast("timestamp"))
         .withColumn("item_current_period_end_ts", col("item_current_period_end_ts").cast("timestamp"))
         .withColumn("api_extracted_ts", col("api_extracted_ts").cast("timestamp"))
+        .filter(col("subscription_item_id") != lit("UNKNOWN"))
     )
 
     subscription_df = (
@@ -274,10 +276,12 @@ def _build_stage_gold_fact_subscription_items(
                     coalesce(col("item_created_ts").cast("string"), lit("")),
                     coalesce(col("item_current_period_start_ts").cast("string"), lit("")),
                     coalesce(col("item_current_period_end_ts").cast("string"), lit("")),
+                    coalesce(col("api_extracted_ts").cast("string"), lit("")),
                 ),
                 256,
             )
         )
+        .dropDuplicates(["subscription_item_business_key"])
     )
 
 
@@ -422,7 +426,9 @@ def run_gold_fact_stripe_subscription_items(spark: SparkSession, env: EnvConfig)
             logger.info("No data in silver current subscription items. Exiting.")
             return
 
-        rows_in = silver_df.count()
+        rows_in = silver_df.filter(
+            trim(col("subscription_item_id")) != lit("UNKNOWN")
+        ).count()
 
         gold_df = _build_stage_gold_fact_subscription_items(
             silver_df=silver_df,
@@ -499,4 +505,8 @@ def run_gold_fact_stripe_subscription_items(spark: SparkSession, env: EnvConfig)
             try:
                 gold_df.unpersist()
             except Exception as e:
-                logger.warning("Failed to unpersist gold_df: %s | run_id=%s", e, run_id)
+                logger.warning(
+                    "Failed to unpersist gold_df: %s | run_id=%s",
+                    e,
+                    run_id,
+                )

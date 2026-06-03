@@ -10,6 +10,7 @@ from pyspark.sql.functions import (
     lit,
     trim,
     lower,
+    upper,
     current_timestamp,
     current_date,
     sha2,
@@ -33,7 +34,6 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
         "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_stripe_subscriptions",
-        
         "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_stripe_subscriptions",
     }
 
@@ -64,20 +64,29 @@ def _get_required_columns() -> list[str]:
     ]
 
 
+def _validate_required_columns(
+    df: DataFrame,
+    required_columns: list[str],
+    table_name: str,
+) -> None:
+    missing_columns = [c for c in required_columns if c not in df.columns]
+
+    if missing_columns:
+        raise ValueError(f"{table_name} missing required columns: {missing_columns}")
+
+
 def _build_gold_dim_subscriptions(
     silver_conform_df: DataFrame,
     run_id: str,
 ) -> DataFrame:
     dim_df = (
         silver_conform_df
-        .filter(col("is_current") == lit(True))
-        .filter(col("subscription_id") != lit("UNKNOWN"))
         .withColumn("subscription_business_key", trim(col("subscription_id")).cast("string"))
         .withColumn("subscription_id", trim(col("subscription_id")).cast("string"))
         .withColumn("stripe_customer_id", trim(col("stripe_customer_id")).cast("string"))
         .withColumn("subscription_status", lower(trim(col("subscription_status"))).cast("string"))
         .withColumn("collection_method", lower(trim(col("collection_method"))).cast("string"))
-        .withColumn("currency", lower(trim(col("currency"))).cast("string"))
+        .withColumn("currency", upper(trim(col("currency"))).cast("string"))
         .withColumn("latest_invoice_id", trim(col("latest_invoice_id")).cast("string"))
         .withColumn("created_ts", col("created_ts").cast("timestamp"))
         .withColumn("start_date_ts", col("start_date_ts").cast("timestamp"))
@@ -95,6 +104,7 @@ def _build_gold_dim_subscriptions(
         .withColumn("etl_run_id", lit(run_id).cast("string"))
         .withColumn("gold_processed_ts", current_timestamp())
         .withColumn("gold_processed_date", current_date())
+        .filter(col("subscription_id") != lit("UNKNOWN"))
     )
 
     return (
@@ -122,6 +132,8 @@ def _build_gold_dim_subscriptions(
                     coalesce(col("cancel_at_period_end").cast("string"), lit("")),
                     coalesce(col("is_livemode").cast("string"), lit("")),
                     coalesce(col("api_extracted_ts").cast("string"), lit("")),
+                    coalesce(col("silver_effective_start_ts").cast("string"), lit("")),
+                    coalesce(col("silver_effective_end_ts").cast("string"), lit("")),
                 ),
                 256,
             )
@@ -152,7 +164,14 @@ def _build_gold_dim_subscriptions(
             "gold_processed_date",
             "record_hash",
         )
+        .dropDuplicates(
+            [
+                "subscription_business_key",
+                "silver_effective_start_ts",
+            ]
+        )
     )
+
 
 def _merge_gold_dim_subscriptions(
     spark: SparkSession,
@@ -161,7 +180,12 @@ def _merge_gold_dim_subscriptions(
 ) -> None:
     target_dt = DeltaTable.forName(spark, target_table)
 
-    merge_condition = "t.subscription_business_key <=> s.subscription_business_key"
+    merge_condition = " AND ".join(
+        [
+            "t.subscription_business_key <=> s.subscription_business_key",
+            "t.silver_effective_start_ts <=> s.silver_effective_start_ts",
+        ]
+    )
 
     (
         target_dt.alias("t")
@@ -186,7 +210,6 @@ def _merge_gold_dim_subscriptions(
                 "cancel_at_period_end": "s.cancel_at_period_end",
                 "is_livemode": "s.is_livemode",
                 "api_extracted_ts": "s.api_extracted_ts",
-                "silver_effective_start_ts": "s.silver_effective_start_ts",
                 "silver_effective_end_ts": "s.silver_effective_end_ts",
                 "etl_run_id": "s.etl_run_id",
                 "gold_processed_ts": "s.gold_processed_ts",
@@ -254,11 +277,11 @@ def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
 
         silver_conform_df = spark.table(cfg["silver_conform_table"])
 
-        required_columns = _get_required_columns()
-        missing_columns = [c for c in required_columns if c not in silver_conform_df.columns]
-
-        if missing_columns:
-            raise ValueError(f"Silver conform missing required columns: {missing_columns}")
+        _validate_required_columns(
+            df=silver_conform_df,
+            required_columns=_get_required_columns(),
+            table_name=cfg["silver_conform_table"],
+        )
 
         if silver_conform_df.isEmpty():
             update_run_log_no_new_data(
@@ -272,7 +295,9 @@ def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
             logger.info("No data in silver conform. Exiting.")
             return
 
-        rows_in = silver_conform_df.filter(col("is_current") == lit(True)).count()
+        rows_in = silver_conform_df.filter(
+            trim(col("subscription_id")) != lit("UNKNOWN")
+        ).count()
 
         gold_df = _build_gold_dim_subscriptions(
             silver_conform_df=silver_conform_df,
@@ -295,7 +320,7 @@ def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
                 last_watermark_ts=None,
             )
 
-            logger.info("No current subscription rows to merge | run_id=%s", run_id)
+            logger.info("No subscription rows to merge | run_id=%s", run_id)
             return
 
         _merge_gold_dim_subscriptions(
@@ -318,7 +343,7 @@ def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
         )
 
         logger.info(
-            "Gold dim_subscription SUCCESS | rows_in=%d | rows_out=%d",
+            "Gold dim_subscriptions SUCCESS | rows_in=%d | rows_out=%d",
             rows_in,
             rows_out,
         )
@@ -338,7 +363,7 @@ def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
             last_watermark_ts=None,
         )
 
-        logger.exception("Gold dim_subscription FAILED | run_id=%s", run_id)
+        logger.exception("Gold dim_subscriptions FAILED | run_id=%s", run_id)
         raise
 
     finally:
@@ -346,4 +371,8 @@ def run_gold_dim_subscriptions(spark: SparkSession, env: EnvConfig) -> None:
             try:
                 gold_df.unpersist()
             except Exception as e:
-                logger.warning("Failed to unpersist gold_df: %s | run_id=%s", e, run_id)
+                logger.warning(
+                    "Failed to unpersist gold_df: %s | run_id=%s",
+                    e,
+                    run_id,
+                )

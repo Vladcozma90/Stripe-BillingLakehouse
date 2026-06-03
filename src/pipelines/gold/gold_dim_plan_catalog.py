@@ -34,7 +34,6 @@ def _build_config(env: EnvConfig) -> dict[str, str]:
     return {
         "run_logs_table": f"{env.catalog}.{env.schemas['ops']}.run_logs",
         "silver_conform_table": f"{env.catalog}.{env.schemas['silver']}.s_conform_erp_plan_catalog",
-
         "gold_table": f"{env.catalog}.{env.schemas['gold']}.g_dim_plan_catalog",
     }
 
@@ -58,14 +57,23 @@ def _get_required_columns() -> list[str]:
     ]
 
 
+def _validate_required_columns(
+    df: DataFrame,
+    required_columns: list[str],
+    table_name: str,
+) -> None:
+    missing_columns = [c for c in required_columns if c not in df.columns]
+
+    if missing_columns:
+        raise ValueError(f"{table_name} missing required columns: {missing_columns}")
+
+
 def _build_gold_dim_plan_catalog(
     silver_conform_df: DataFrame,
     run_id: str,
 ) -> DataFrame:
     dim_df = (
         silver_conform_df
-        .filter(col("is_current") == lit(True))
-        .filter(col("plan_code") != lit("UNKNOWN"))
         .withColumn("plan_business_key", trim(col("plan_code")).cast("string"))
         .withColumn("plan_code", trim(col("plan_code")).cast("string"))
         .withColumn("plan_name", trim(col("plan_name")).cast("string"))
@@ -83,6 +91,7 @@ def _build_gold_dim_plan_catalog(
         .withColumn("etl_run_id", lit(run_id).cast("string"))
         .withColumn("gold_processed_ts", current_timestamp())
         .withColumn("gold_processed_date", current_date())
+        .filter(col("plan_code") != lit("UNKNOWN"))
     )
 
     return (
@@ -104,6 +113,8 @@ def _build_gold_dim_plan_catalog(
                     coalesce(col("effective_to").cast("string"), lit("")),
                     coalesce(col("source_is_current").cast("string"), lit("")),
                     coalesce(col("price_version").cast("string"), lit("")),
+                    coalesce(col("silver_effective_start_ts").cast("string"), lit("")),
+                    coalesce(col("silver_effective_end_ts").cast("string"), lit("")),
                 ),
                 256,
             )
@@ -128,6 +139,12 @@ def _build_gold_dim_plan_catalog(
             "gold_processed_date",
             "record_hash",
         )
+        .dropDuplicates(
+            [
+                "plan_business_key",
+                "silver_effective_start_ts",
+            ]
+        )
     )
 
 
@@ -138,7 +155,12 @@ def _merge_gold_dim_plan_catalog(
 ) -> None:
     target_dt = DeltaTable.forName(spark, target_table)
 
-    merge_condition = "t.plan_business_key <=> s.plan_business_key"
+    merge_condition = " AND ".join(
+        [
+            "t.plan_business_key <=> s.plan_business_key",
+            "t.silver_effective_start_ts <=> s.silver_effective_start_ts",
+        ]
+    )
 
     (
         target_dt.alias("t")
@@ -157,7 +179,6 @@ def _merge_gold_dim_plan_catalog(
                 "effective_to": "s.effective_to",
                 "source_is_current": "s.source_is_current",
                 "price_version": "s.price_version",
-                "silver_effective_start_ts": "s.silver_effective_start_ts",
                 "silver_effective_end_ts": "s.silver_effective_end_ts",
                 "etl_run_id": "s.etl_run_id",
                 "gold_processed_ts": "s.gold_processed_ts",
@@ -219,11 +240,11 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
 
         silver_conform_df = spark.table(cfg["silver_conform_table"])
 
-        required_columns = _get_required_columns()
-        missing_columns = [c for c in required_columns if c not in silver_conform_df.columns]
-
-        if missing_columns:
-            raise ValueError(f"Silver conform missing required columns: {missing_columns}")
+        _validate_required_columns(
+            df=silver_conform_df,
+            required_columns=_get_required_columns(),
+            table_name=cfg["silver_conform_table"],
+        )
 
         if silver_conform_df.isEmpty():
             update_run_log_no_new_data(
@@ -238,7 +259,7 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             logger.info("No data in silver conform. Exiting.")
             return
 
-        rows_in = silver_conform_df.filter(col("is_current") == lit(True)).count()
+        rows_in = silver_conform_df.filter(col("plan_code") != lit("UNKNOWN")).count()
 
         gold_df = _build_gold_dim_plan_catalog(
             silver_conform_df=silver_conform_df,
@@ -261,7 +282,7 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
                 last_watermark_ts=None,
             )
 
-            logger.info("No current plan rows to merge | run_id=%s", run_id)
+            logger.info("No plan rows to merge | run_id=%s", run_id)
             return
 
         _merge_gold_dim_plan_catalog(
@@ -312,4 +333,8 @@ def run_gold_dim_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             try:
                 gold_df.unpersist()
             except Exception as e:
-                logger.warning("Failed to unpersist gold_df: %s | run_id=%s", e, run_id)
+                logger.warning(
+                    "Failed to unpersist gold_df: %s | run_id=%s",
+                    e,
+                    run_id,
+                )

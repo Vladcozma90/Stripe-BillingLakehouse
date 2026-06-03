@@ -9,6 +9,7 @@ from pyspark.sql.functions import (
     col,
     trim,
     lower,
+    upper,
     current_timestamp,
     current_date,
     lit,
@@ -129,7 +130,7 @@ def _build_stage_gold_fact_invoices(
         .withColumn("subscription_id", trim(col("subscription_id")).cast("string"))
         .withColumn("invoice_status", lower(trim(col("invoice_status"))).cast("string"))
         .withColumn("collection_method", lower(trim(col("collection_method"))).cast("string"))
-        .withColumn("currency", lower(trim(col("currency"))).cast("string"))
+        .withColumn("currency", upper(trim(col("currency"))).cast("string"))
         .withColumn("invoice_number", trim(col("invoice_number")).cast("string"))
         .withColumn("amount_due", col("amount_due").cast("bigint"))
         .withColumn("amount_paid", col("amount_paid").cast("bigint"))
@@ -150,6 +151,7 @@ def _build_stage_gold_fact_invoices(
         .withColumn("status_voided_ts", col("status_voided_ts").cast("timestamp"))
         .withColumn("status_marked_uncollectible_ts", col("status_marked_uncollectible_ts").cast("timestamp"))
         .withColumn("api_extracted_ts", col("api_extracted_ts").cast("timestamp"))
+        .filter(col("invoice_id") != lit("UNKNOWN"))
     )
 
     subscription_df = (
@@ -320,10 +322,12 @@ def _build_stage_gold_fact_invoices(
                     coalesce(col("status_paid_ts").cast("string"), lit("")),
                     coalesce(col("status_voided_ts").cast("string"), lit("")),
                     coalesce(col("status_marked_uncollectible_ts").cast("string"), lit("")),
+                    coalesce(col("api_extracted_ts").cast("string"), lit("")),
                 ),
                 256,
             )
         )
+        .dropDuplicates(["invoice_business_key"])
     )
 
 
@@ -491,7 +495,7 @@ def run_gold_fact_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             logger.info("No data in silver current invoices. Exiting.")
             return
 
-        rows_in = silver_df.count()
+        rows_in = silver_df.filter(trim(col("invoice_id")) != lit("UNKNOWN")).count()
 
         gold_df = _build_stage_gold_fact_invoices(
             silver_df=silver_df,
@@ -568,4 +572,8 @@ def run_gold_fact_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             try:
                 gold_df.unpersist()
             except Exception as e:
-                logger.warning("Failed to unpersist gold_df: %s | run_id=%s", e, run_id)
+                logger.warning(
+                    "Failed to unpersist gold_df: %s | run_id=%s",
+                    e,
+                    run_id,
+                )

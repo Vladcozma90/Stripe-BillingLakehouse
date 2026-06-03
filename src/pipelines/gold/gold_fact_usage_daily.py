@@ -106,6 +106,7 @@ def _build_stage_gold_fact_usage_daily(
         .withColumn("units_raw", col("units_raw").cast("bigint"))
         .withColumn("source_system", upper(trim(col("source_system"))).cast("string"))
         .withColumn("batch_id", trim(col("batch_id")).cast("string"))
+        .filter(col("usage_id") != lit("unknown"))
     )
 
     customer_df = (
@@ -218,6 +219,7 @@ def _build_stage_gold_fact_usage_daily(
                 256,
             )
         )
+        .dropDuplicates(["usage_business_key"])
     )
 
 
@@ -341,7 +343,9 @@ def run_gold_fact_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             logger.info("No data in silver current usage_daily. Exiting.")
             return
 
-        rows_in = silver_df.count()
+        rows_in = silver_df.filter(
+            lower(trim(col("usage_id"))) != lit("unknown")
+        ).count()
 
         gold_df = _build_stage_gold_fact_usage_daily(
             silver_df=silver_df,
@@ -416,4 +420,8 @@ def run_gold_fact_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
             try:
                 gold_df.unpersist()
             except Exception as e:
-                logger.warning("Failed to unpersist gold_df: %s | run_id=%s", e, run_id)
+                logger.warning(
+                    "Failed to unpersist gold_df: %s | run_id=%s",
+                    e,
+                    run_id,
+                )
