@@ -232,16 +232,23 @@ def _merge_conform_scd2(
         .select(*key_columns, "record_hash")
     )
 
-    join_condition = " AND ".join(
-        [f"inc.{c} <=> con.{c}" for c in key_columns]
-    )
-
+    join_condition = [
+        col(f"inc.{column_name}").eqNullSafe(col(f"con.{column_name}"))
+        for column_name in key_columns
+    ]
+    
+    join_condition = join_condition[0]
+    
+    for condition in join_condition[1:]:
+        join_condition = join_condition & condition
+    
     joined_df = incoming_df.alias("inc").join(
         conform_active.alias("con"),
-        on=expr(join_condition),
-        how="left"
+        on=join_condition,
+        how="left",
     )
 
+    
     changed_df = (
         joined_df
         .filter(col("con.record_hash").isNotNull() & (col("con.record_hash") != col("inc.record_hash")))
