@@ -132,7 +132,8 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
 
     return (
         dedup_df
-        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("timestamp"))
+        .withColumn("silver_effective_start_ts", col("effective_from").cast("timestamp"))
+        .withColumn("silver_effective_end_ts", col("effective_to").cast("timestamp"))
         .withColumn("record_hash", sha2(concat_ws("||", *[coalesce(col(c).cast("string"), lit("")) for c in scd2_cols]), 256))
         .select(
             "plan_code",
@@ -151,12 +152,13 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
             "_landing_format",
             "etl_run_id",
             "silver_effective_start_ts",
+            "silver_effective_end_ts",
             "record_hash",
         )
     )
 
 
-def _merge_conform_scd2(
+def _merge_conform(
         spark: SparkSession,
         conform_table: str,
         incoming_df: DataFrame,
@@ -173,89 +175,38 @@ def _merge_conform_scd2(
 
     conform_dt = DeltaTable.forName(spark, conform_table)
 
-    conform_active = (
-        conform_dt.toDF()
-        .filter(col("is_current") == lit(True))
-        .select(*key_columns, "record_hash")
-    )
-
-    join_condition = [
-        col(f"inc.{column_name}").eqNullSafe(col(f"con.{column_name}"))
-        for column_name in key_columns
-    ]
-
-    join_condition = join_condition[0]
-    
-    for condition in join_condition[1:]:
-        join_condition = join_condition & condition
-
-    joined_df = incoming_df.alias("inc").join(
-        conform_active.alias("con"),
-        on=join_condition,
-        how="left"
-    )
-
-    changed_df = (
-        joined_df
-        .filter(col("con.record_hash").isNotNull() & (col("con.record_hash") != col("inc.record_hash")))
-        .select("inc.*")
-    )
-
-    new_df = (
-        joined_df
-        .filter(col("con.record_hash").isNull())
-        .select("inc.*")
-    )
-
-    update_changed_df = (
-        changed_df
-        .select("*")
-        .withColumn("scd_action", lit("UPDATE"))
-    )
-
-    insert_changed_df = (
-        changed_df
-        .select("*")
-        .withColumn("scd_action", lit("INSERT"))
-    )
-
-    insert_new_df = (
-        new_df
-        .select("*")
-        .withColumn("scd_action", lit("INSERT"))
-    )
-
-    staged_df = (
-        update_changed_df
-        .unionByName(insert_changed_df)
-        .unionByName(insert_new_df)
-        .withColumn("is_current", lit(True))
-        .withColumn("silver_effective_end_ts", lit(None).cast("timestamp"))
-        .withColumn("updated_at", current_timestamp())
-    )
-
     merge_condition = " AND ".join(
         [
             *(f"t.{c} <=> s.{c}" for c in key_columns),
-            "t.is_current = true",
-            "s.scd_action = 'UPDATE'",
         ]
     )
 
     (
         conform_dt.alias("t")
-        .merge(staged_df.alias("s"), merge_condition)
+        .merge(incoming_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="NOT (t.record_hash <=> s.record_hash) AND s.scd_action = 'UPDATE'",
+            condition="NOT (t.record_hash <=> s.record_hash)",
             set={
-                "silver_effective_end_ts": "s.silver_effective_start_ts",
-                "updated_at": "current_timestamp()",
-                "is_current": "false",
+                "plan_name": "s.plan_name",
+                "monthly_price_usd": "s.monthly_price_usd",
+                "seats_included": "s.seats_included",
+                "max_units_per_month": "s.max_units_per_month",
+                "currency": "s.currency",
+                "billing_period": "s.billing_period",
+                "effective_to": "s.effective_to",
+                "source_is_current": "s.source_is_current",
+                "price_version": "s.price_version",
+                "_file_name": "s._file_name",
+                "_source": "s._source",
+                "_landing_format": "s._landing_format",
+                "silver_effective_start_ts": "s.silver_effective_start_ts",
+                "silver_effective_end_ts": "s.silver_effective_end_ts",
+                "updated_at": "s.updated_at",
                 "etl_run_id": "s.etl_run_id",
+                "record_hash": "s.record_hash",
             }
         )
         .whenNotMatchedInsert(
-            condition="s.scd_action = 'INSERT'",
             values={
                 "plan_code": "s.plan_code",
                 "plan_name": "s.plan_name",
@@ -276,7 +227,6 @@ def _merge_conform_scd2(
                 "updated_at": "s.updated_at",
                 "etl_run_id": "s.etl_run_id",
                 "record_hash": "s.record_hash",
-                "is_current": "s.is_current",
             },
         )
         .execute()
@@ -427,7 +377,7 @@ def run_silver_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
             )
             return
 
-        _merge_conform_scd2(
+        _merge_conform(
             spark=spark,
             conform_table=cfg["conform_table"],
             incoming_df=incoming_df,

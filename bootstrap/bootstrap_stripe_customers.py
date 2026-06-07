@@ -58,9 +58,9 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
                 livemode BOOLEAN,
                 api_extracted_ts TIMESTAMP,
                 _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
                 _file_name STRING,
-                _source_format STRING,
+                _source STRING,
+                _landing_format STRING,
                 etl_run_id STRING,
                 silver_processed_ts TIMESTAMP,
                 silver_processed_date DATE
@@ -83,15 +83,13 @@ def bootstrap_stripe_customers(spark: SparkSession, env: EnvConfig) -> None:
                 is_delinquent BOOLEAN,
                 livemode BOOLEAN,
                 api_extracted_ts TIMESTAMP,
+                _ingest_ts TIMESTAMP,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING,
-                silver_effective_start_ts TIMESTAMP,
-                silver_effective_end_ts TIMESTAMP,
                 updated_at TIMESTAMP,
                 etl_run_id STRING,
-                record_hash STRING,
-                is_current BOOLEAN
+                record_hash STRING
                 )
                 USING DELTA
                 LOCATION '{cfg["silver_conform_path"]}'

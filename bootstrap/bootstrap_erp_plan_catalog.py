@@ -92,8 +92,7 @@ def bootstrap_erp_plan_catalog(spark: SparkSession, env: EnvConfig) -> None:
                     silver_effective_end_ts TIMESTAMP,
                     updated_at TIMESTAMP,
                     etl_run_id STRING,
-                    record_hash STRING,
-                    is_current BOOLEAN
+                    record_hash STRING
                 )
                 USING DELTA
                 LOCATION '{cfg["silver_conform_path"]}'

@@ -57,7 +57,6 @@ def _get_required_columns() -> list[str]:
         "_extracted_at",
         "data",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -142,7 +141,6 @@ def _build_stage_stripe_subscriptions(incr_df: DataFrame, run_id: str) -> DataFr
         "livemode",
         "api_extracted_ts",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -170,7 +168,7 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
         "trial_end_ts",
         "cancel_at_period_end",
         "livemode",
-        "api_extracted_ts",
+        "_ingest_ts",
         "_file_name",
         "_source",
         "_landing_format",
@@ -178,7 +176,6 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
 
     return (
         dedup_df
-        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("timestamp"))
         .withColumn(
             "record_hash",
             sha2(
@@ -211,13 +208,12 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
             "_source",
             "_landing_format",
             "etl_run_id",
-            "silver_effective_start_ts",
             "record_hash",
         )
     )
 
 
-def _merge_conform_scd2(
+def _merge_conform(
         spark: SparkSession,
         conform_table: str,
         incoming_df: DataFrame,
@@ -234,77 +230,43 @@ def _merge_conform_scd2(
 
     conform_dt = DeltaTable.forName(spark, conform_table)
 
-    conform_active = (
-        conform_dt.toDF()
-        .filter(col("is_current") == lit(True))
-        .select(*key_columns, "record_hash")
-    )
-
-    join_condition = [
-        col(f"inc.{column_name}").eqNullSafe(col(f"con.{column_name}"))
-        for column_name in key_columns
-    ]
-
-    join_condition = join_condition[0]
-
-    for condition in join_condition[1:]:
-        join_condition = join_condition & condition
-
-    joined_df = incoming_df.alias("inc").join(
-        conform_active.alias("con"),
-        on=join_condition,
-        how="left"
-        )
-
-    changed_df = (
-        joined_df
-        .filter(col("con.record_hash").isNotNull() & (col("inc.record_hash") != col("con.record_hash")))
-        .select("inc.*")
-    )
-
-    new_df = (
-        joined_df
-        .filter(col("con.record_hash").isNull())
-        .select("inc.*")
-    )
-
-    update_changed_df = changed_df.withColumn("scd_action", lit("UPDATE"))
-
-    insert_changed_df = changed_df.withColumn("scd_action", lit("INSERT"))
-
-    insert_new_df = new_df.withColumn("scd_action", lit("INSERT"))
-
-    staged_df = (
-        update_changed_df
-        .unionByName(insert_changed_df)
-        .unionByName(insert_new_df)
-        .withColumn("is_current", lit(True))
-        .withColumn("silver_effective_end_ts", lit(None).cast("timestamp"))
-        .withColumn("updated_at", current_timestamp())
-    )
-
     merge_condition = " AND ".join(
         [
             *(f"t.{c} <=> s.{c}" for c in key_columns),
-            "t.is_current = true",
-            "s.scd_action = 'UPDATE'",
         ]
     )
 
     (
         conform_dt.alias("t")
-        .merge(staged_df.alias("s"), condition=merge_condition)
+        .merge(incoming_df.alias("s"), merge_condition)
         .whenMatchedUpdate(
-            condition="NOT (t.record_hash <=> s.record_hash) AND s.scd_action = 'UPDATE'",
+            condition="NOT (t.record_hash <=> s.record_hash)",
             set={
-                "silver_effective_end_ts": "s.silver_effective_start_ts",
-                "updated_at": "s.updated_at",
-                "is_current": "false",
+                "stripe_customer_id": "s.stripe_customer_id",
+                "subscription_status": "s.subscription_status",
+                "collection_method": "s.collection_method",
+                "currency": "s.currency",
+                "latest_invoice_id": "s.latest_invoice_id",
+                "created_ts": "s.created_ts",
+                "start_date_ts": "s.start_date_ts",
+                "billing_cycle_anchor_ts": "s.billing_cycle_anchor_ts",
+                "cancel_at_ts": "s.cancel_at_ts",
+                "canceled_at_ts": "s.canceled_at_ts",
+                "ended_at_ts": "s.ended_at_ts",
+                "trial_start_ts": "s.trial_start_ts",
+                "trial_end_ts": "s.trial_end_ts",
+                "cancel_at_period_end": "s.cancel_at_period_end",
+                "livemode": "s.livemode",
+                "api_extracted_ts": "s.api_extracted_ts",
+                "_ingest_ts": "s._ingest_ts",
+                "_file_name": "s._file_name",
+                "_source": "s._source",
+                "_landing_format": "s._landing_format",
                 "etl_run_id": "s.etl_run_id",
+                "record_hash": "s.record_hash"
             }
         )
         .whenNotMatchedInsert(
-            condition="s.scd_action = 'INSERT'",
             values={
                 "subscription_id": "s.subscription_id",
                 "stripe_customer_id": "s.stripe_customer_id",
@@ -323,15 +285,12 @@ def _merge_conform_scd2(
                 "cancel_at_period_end": "s.cancel_at_period_end",
                 "livemode": "s.livemode",
                 "api_extracted_ts": "s.api_extracted_ts",
+                "_ingest_ts": "s._ingest_ts",
                 "_file_name": "s._file_name",
                 "_source": "s._source",
                 "_landing_format": "s._landing_format",
                 "etl_run_id": "s.etl_run_id",
-                "silver_effective_start_ts": "s.silver_effective_start_ts",
-                "silver_effective_end_ts": "s.silver_effective_end_ts",
-                "updated_at": "s.updated_at",
-                "record_hash": "s.record_hash",
-                "is_current": "s.is_current"
+                "record_hash": "s.record_hash"
             }
         )
         .execute()
@@ -493,11 +452,10 @@ def run_silver_stripe_subscriptions(spark: SparkSession, env: EnvConfig) -> None
             )
             return
 
-        _merge_conform_scd2(
+        _merge_conform(
             spark=spark,
             conform_table=cfg["conform_table"],
             incoming_df=incoming_df,
-            run_id=run_id,
             key_columns=business_key,
         )
 

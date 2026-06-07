@@ -2,7 +2,7 @@ from delta.tables import DeltaTable
 from pyspark.sql import SparkSession, DataFrame
 
 
-def merge_current_snapshot(
+def append_new_facts(
     spark: SparkSession,
     current_table: str,
     df: DataFrame,
@@ -26,7 +26,6 @@ def merge_current_snapshot(
     (
         current_dt.alias("t")
         .merge(merge_df.alias("s"), merge_condition)
-        .whenMatchedUpdateAll()
         .whenNotMatchedInsertAll()
         .execute()
     )

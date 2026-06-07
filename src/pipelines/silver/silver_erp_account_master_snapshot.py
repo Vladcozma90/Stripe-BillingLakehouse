@@ -64,7 +64,6 @@ def _get_required_columns() -> list[str]:
         "source_system",
         "snapshot_dt",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -150,7 +149,6 @@ def _build_stage_erp_account_master_snapshot(incr_df: DataFrame, run_id: str) ->
         "source_system",
         "snapshot_dt",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -183,7 +181,7 @@ def _build_incoming_conform_df(dedup_df: DataFrame) -> DataFrame:
 
     return (
         dedup_df
-        .withColumn("silver_effective_start_ts", col("_ingest_ts").cast("timestamp"))
+        .withColumn("silver_effective_start_ts", col("snapshot_dt").cast("timestamp"))
         .withColumn("record_hash", sha2(concat_ws(";", *[coalesce(col(c).cast("string"), lit("")) for c in scd2_cols]), 256))
         .select(
             "account_id",

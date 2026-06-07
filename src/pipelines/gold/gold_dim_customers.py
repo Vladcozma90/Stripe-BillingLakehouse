@@ -89,7 +89,7 @@ def _validate_required_columns(
         raise ValueError(f"{table_name} missing required columns: {missing_columns}")
 
 
-def _build_gold_dim_customer(
+def _build_gold_dim_customers(
     account_df: DataFrame,
     stripe_customers_df: DataFrame,
     run_id: str,
@@ -276,7 +276,7 @@ def _build_gold_dim_customer(
     )
 
 
-def _merge_gold_dim_customer(
+def _merge_gold_dim_customers(
     spark: SparkSession,
     target_table: str,
     source_df: DataFrame,
@@ -413,7 +413,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
 
         rows_in = account_count + stripe_customers_count
 
-        dim_customer_df = _build_gold_dim_customer(
+        dim_customer_df = _build_gold_dim_customers(
             account_df=account_df,
             stripe_customers_df=stripe_customers_df,
             run_id=run_id,
@@ -438,7 +438,7 @@ def run_gold_dim_customers(spark: SparkSession, env: EnvConfig) -> None:
             logger.info("No customer rows to merge | run_id=%s", run_id)
             return
 
-        _merge_gold_dim_customer(
+        _merge_gold_dim_customers(
             spark=spark,
             target_table=cfg["gold_customers_table"],
             source_df=dim_customer_df,

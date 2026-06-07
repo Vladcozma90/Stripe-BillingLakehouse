@@ -57,7 +57,6 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
                 source_system STRING,
                 batch_id STRING,
                 _ingest_ts TIMESTAMP,
-                _ingest_date DATE,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING,
@@ -85,6 +84,7 @@ def bootstrap_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
                 etl_run_id STRING,
                 silver_processed_ts TIMESTAMP,
                 silver_processed_date DATE,
+                _ingest_ts TIMESTAMP,
                 _file_name STRING,
                 _source STRING,
                 _landing_format STRING

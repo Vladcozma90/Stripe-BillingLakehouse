@@ -24,7 +24,7 @@ from src.services.audit import (
 )
 from src.services.watermark import read_incremental_by_watermark, upsert_watermark
 from src.services.delta_table import write_append_table
-from src.services.snapshot import merge_current_snapshot
+from src.services.snapshot import append_new_facts
 from src.services.dq import (
     evaluate_dq_rules,
     build_dq_results_df,
@@ -57,7 +57,6 @@ def _get_required_columns() -> list[str]:
         "_extracted_at",
         "data",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -161,7 +160,6 @@ def _build_stage_stripe_invoices(incr_df: DataFrame, run_id: str) -> DataFrame:
         "status_marked_uncollectible_ts",
         "api_extracted_ts",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -312,7 +310,7 @@ def run_silver_stripe_invoices(spark: SparkSession, env: EnvConfig) -> None:
             )
             return
 
-        merge_current_snapshot(
+        append_new_facts(
             spark=spark,
             current_table=cfg["current_table"],
             df=dedup_df,

@@ -31,7 +31,7 @@ from src.services.dq import (
 )
 from src.services.delta_table import write_append_table
 from src.services.transformations import deduplicate_by_business_key
-from src.services.snapshot import merge_current_snapshot
+from src.services.snapshot import append_new_facts
 
 
 logger = logging.getLogger(__name__)
@@ -57,7 +57,6 @@ def _get_required_columns() -> list[str]:
         "_extracted_at",
         "data",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -128,7 +127,6 @@ def _build_stage_stripe_subscription_items(incr_df: DataFrame, run_id: str) -> D
         "item_current_period_end_ts",
         "api_extracted_ts",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -290,7 +288,7 @@ def run_silver_stripe_subscription_items(spark: SparkSession, env: EnvConfig) ->
 
         # current creation
 
-        merge_current_snapshot(
+        append_new_facts(
             spark=spark,
             current_table=cfg["current_table"],
             df=dedup_df,

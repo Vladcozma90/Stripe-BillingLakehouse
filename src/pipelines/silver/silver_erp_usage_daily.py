@@ -29,7 +29,7 @@ from src.services.dq import (
     build_dq_failure_message,
     quarantine_by_business_key
 )
-from src.services.snapshot import merge_current_snapshot
+from src.services.snapshot import append_new_facts
 from src.services.transformations import deduplicate_by_business_key
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,6 @@ def _get_required_cols() -> list:
         "source_system",
         "batch_id",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format"
@@ -111,7 +110,6 @@ def _build_stage_silver_erp_usage_daily(incr_df: DataFrame, run_id: str) -> Data
         "source_system",
         "batch_id",
         "_ingest_ts",
-        "_ingest_date",
         "_file_name",
         "_source",
         "_landing_format",
@@ -271,7 +269,7 @@ def run_silver_erp_usage_daily(spark: SparkSession, env: EnvConfig) -> None:
 
         # current creation
 
-        merge_current_snapshot(
+        append_new_facts(
             spark=spark,
             current_table=cfg["current_table"],
             df=dedup_df,
